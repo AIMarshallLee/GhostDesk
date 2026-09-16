@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import {
   Bot,
   Play,
@@ -199,6 +199,14 @@ export default function WorkerStudio() {
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [progress, setProgress] = useState(0);
   const [savedTokens, setSavedTokens] = useState(0);
+  const cancelRef = useRef(false);
+
+  useEffect(() => {
+    return () => {
+      cancelRef.current = true;
+    };
+  }, []);
+
   const [logs, setLogs] = useState<string[]>([
     TRANSLATIONS.zh.systemReady,
     TRANSLATIONS.zh.hardwareReady,
@@ -221,6 +229,7 @@ export default function WorkerStudio() {
 
   const startWorker = async () => {
     if (workerStatus === 'running') return;
+    cancelRef.current = false;
     setWorkerStatus('running');
     setCurrentStepIndex(0);
     setProgress(0);
@@ -228,6 +237,7 @@ export default function WorkerStudio() {
     addLog(`${t.dispatching}${selectedSkill.name}`);
 
     for (let i = 0; i < selectedSkill.steps.length; i++) {
+      if (cancelRef.current) return;
       const step = selectedSkill.steps[i];
       setCurrentStepIndex(i);
       const isFast = step.channelPreference === 'fast';
@@ -240,14 +250,18 @@ export default function WorkerStudio() {
       }
 
       await new Promise((resolve) => setTimeout(resolve, 1500));
+      if (cancelRef.current) return;
       setProgress(Math.round(((i + 1) / selectedSkill.steps.length) * 100));
     }
 
-    setWorkerStatus('completed');
-    addLog(t.taskDone);
+    if (!cancelRef.current) {
+      setWorkerStatus('completed');
+      addLog(t.taskDone);
+    }
   };
 
   const stopWorker = () => {
+    cancelRef.current = true;
     setWorkerStatus('idle');
     addLog(t.stopped);
   };

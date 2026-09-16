@@ -83,10 +83,14 @@ def recognize_speech(wav_bytes: bytes) -> str:
             audio_data = recognizer.record(source)
 
     try:
-        # 使用 Google 免费语音识别接口 (支持中文普通话与英文)
+        # 1. 尝试调用 Google 免费高准确率语音接口 (中文普通话)
         text = recognizer.recognize_google(audio_data, language="zh-CN")
         return text.strip()
     except sr.UnknownValueError:
+        # 音量过小或无清晰人声
+        return ""
+    except sr.RequestError as e:
+        print(f"⚠️ 无法连接在线语音识别服务 ({e})。如处于离线/内网环境，可通过 pip install faster-whisper 启用私有化离线听写。")
         return ""
     except Exception as e:
         print(f"⚠️ 语音识别异常: {e}")
@@ -94,15 +98,17 @@ def recognize_speech(wav_bytes: bytes) -> str:
 
 
 def inject_prompt_to_active_window(text: str, auto_enter: bool = True):
-    """通过剪贴板瞬时填入当前窗口，完美支持中文与特殊符号"""
+    """通过剪贴板瞬时填入当前窗口，完美支持中文与特殊符号 (跨平台 Windows / macOS)"""
     if not text:
         return
     # 备份旧剪贴板
     old_clipboard = pyperclip.paste()
     try:
         pyperclip.copy(text)
-        time.sleep(0.05)
-        pyautogui.hotkey("ctrl", "v")
+        time.sleep(0.06)
+        # 跨平台按键适配：macOS 使用 Command+V，Windows 使用 Ctrl+V
+        paste_modifier = "command" if sys.platform == "darwin" else "ctrl"
+        pyautogui.hotkey(paste_modifier, "v")
         if auto_enter:
             time.sleep(0.08)
             pyautogui.press("enter")

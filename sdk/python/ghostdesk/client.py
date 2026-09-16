@@ -38,10 +38,13 @@ class GhostClient:
 
     def list_skills(self) -> List[Dict[str, Any]]:
         """Retrieves all available employee skills registered in GhostDesk."""
-        resp = self.client.get("/skills")
-        if resp.status_code == 200:
-            return resp.json().get("skills", [])
-        return []
+        try:
+            resp = self.client.get("/skills")
+            if resp.status_code == 200:
+                return resp.json().get("skills", [])
+            return []
+        except Exception:
+            return []
 
     def dispatch_skill(
         self, skill_id: str, target_windows: List[WindowTarget]
@@ -51,9 +54,13 @@ class GhostClient:
             "skillId": skill_id,
             "targetWindows": [w.model_dump() for w in target_windows],
         }
-        resp = self.client.post("/worker/dispatch", json=payload)
-        resp.raise_for_status()
-        return resp.json()
+        try:
+            resp = self.client.post("/worker/dispatch", json=payload)
+            if resp.status_code == 200:
+                return resp.json()
+            return {"ok": False, "error": f"HTTP {resp.status_code}: {resp.text}"}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
 
     def execute_action(
         self,
@@ -80,22 +87,33 @@ class GhostClient:
             payload["action"]["x"] = x
             payload["action"]["y"] = y
 
-        resp = self.client.post("/worker/act", json=payload)
-        data = resp.json()
-        return ExecutionResult(
-            ok=data.get("ok", False),
-            channel=data.get("channel", "ghost"),
-            duration_ms=data.get("durationMs", 0),
-            tokens_saved=data.get("tokensSavedEstimate", 0),
-            message=data.get("message", ""),
-            error=data.get("error"),
-        )
+        try:
+            resp = self.client.post("/worker/act", json=payload)
+            data = resp.json() if resp.status_code == 200 else {}
+            return ExecutionResult(
+                ok=data.get("ok", resp.status_code == 200),
+                channel=data.get("channel", "ghost"),
+                duration_ms=data.get("durationMs", 0),
+                tokens_saved=data.get("tokensSavedEstimate", 0),
+                message=data.get("message", ""),
+                error=data.get("error") or (None if resp.status_code == 200 else f"HTTP {resp.status_code}: {resp.text}"),
+            )
+        except Exception as e:
+            return ExecutionResult(
+                ok=False,
+                channel="none",
+                error=f"Connection failed: {e}",
+            )
 
     def switch_window(self, hwnd: str) -> Dict[str, Any]:
         """Safely activates an authorized window in the workspace scope."""
-        resp = self.client.post("/workspace/switch", json={"hwnd": hwnd})
-        resp.raise_for_status()
-        return resp.json()
+        try:
+            resp = self.client.post("/workspace/switch", json={"hwnd": hwnd})
+            if resp.status_code == 200:
+                return resp.json()
+            return {"ok": False, "error": f"HTTP {resp.status_code}: {resp.text}"}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
 
     def close(self):
         self.client.close()

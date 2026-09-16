@@ -88,3 +88,24 @@ test('adding and removing windows updates scope dynamically', () => {
   assert.equal(ws.isInScope('1001'), false);
   assert.equal(ws.getActiveWindow()?.hwnd, '1002');
 });
+
+test('multi-window workspace accepts macOS Quartz IDs and bundle strings', () => {
+  const macWin1: WindowIdentity = {
+    hwnd: 'mac_quartz_4512',
+    pid: 101,
+    process: 'WeChat',
+    title: '微信 Mac版',
+  };
+  const macWin2: WindowIdentity = {
+    hwnd: '0x004A',
+    pid: 102,
+    process: 'Google Chrome',
+    title: 'Google Chrome',
+  };
+
+  const ws = new MultiWindowWorkspace([macWin1, macWin2]);
+  assert.equal(ws.listWindows().length, 2);
+  assert.equal(ws.getActiveWindow()?.hwnd, 'mac_quartz_4512');
+  assert.equal(ws.switchFocus('0x004A').process, 'Google Chrome');
+});
+

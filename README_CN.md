@@ -1,10 +1,11 @@
 # GhostDesk 👻🖥️⚡
 
-> **攻壳机动队式软硬协同·物理级防封的桌面 AI 员工开源底座 (Windows)**  
-> *The Open-Source Hardware-in-the-Loop Desktop AI Employee Substrate*
+> **攻壳机动队式软硬协同·物理级防封的桌面 AI 员工开源底座 (支持 Windows 与 macOS)**  
+> *The Open-Source Hardware-in-the-Loop Desktop AI Employee Substrate for Windows & macOS*
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/platform-Windows%2011%20x64-blue)](https://www.microsoft.com/windows)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS-blue)](https://github.com/AIMarshallLee/GhostDesk)
+[![CI](https://github.com/AIMarshallLee/GhostDesk/actions/workflows/ci.yml/badge.svg)](https://github.com/AIMarshallLee/GhostDesk/actions/workflows/ci.yml)
 [![Hardware](https://img.shields.io/badge/hardware-Raspberry%20Pi%20Pico%20RP2040-red)](https://www.raspberrypi.com/products/raspberry-pi-pico/)
 [![Models](https://img.shields.io/badge/models-Gemini%20%7C%20UI--TARS%201.5%20%7C%20Qwen2.5--VL-green)](https://ai.google.dev/)
 [![MCP](https://img.shields.io/badge/MCP-Model%20Context%20Protocol-purple)](https://modelcontextprotocol.io/)

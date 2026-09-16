@@ -1,0 +1,19 @@
+name: 新硬件芯片适配支持请求 (Hardware Microcontroller Request)
+description: 申请适配更多微控制器核心板（如 ESP32-S3、Teensy 4.0、CH32V203 等）
+title: "[Hardware]: "
+labels: ["hardware", "tinyusb"]
+body:
+  - type: input
+    id: mcu_chip
+    attributes:
+      label: 芯片/开发板型号 (MCU / Board Model)
+      placeholder: "例如：ESP32-S3-DevKitC / Seeed Xiao RP2040"
+    validations:
+      required: true
+  - type: textarea
+    id: use_case
+    attributes:
+      label: 使用场景与预期优势 (Use Case & Advantages)
+      placeholder: "例如：自带 WiFi 可实现无线远程免接线 HID 键鼠注入"
+    validations:
+      required: true

@@ -1,0 +1,31 @@
+name: 问题报告 (Bug Report)
+description: 提交运行、编译或硬件通信异常
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: dropdown
+    id: os_platform
+    attributes:
+      label: 操作系统 (Operating System)
+      options:
+        - Windows 11 x64
+        - Windows 10 x64
+        - macOS (Apple Silicon M-Series)
+        - macOS (Intel)
+        - Linux
+    validations:
+      required: true
+  - type: textarea
+    id: bug_desc
+    attributes:
+      label: 异常现象描述 (Description)
+      placeholder: "简要描述遇到了什么问题，以及期望的结果"
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: 复现步骤 (Steps to Reproduce)
+      placeholder: "1. 启动 ...\n2. 点击 ...\n3. 报错 ..."
+    validations:
+      required: true

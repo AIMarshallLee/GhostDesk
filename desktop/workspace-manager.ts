@@ -30,8 +30,8 @@ export class MultiWindowWorkspace {
    * Adds an allowed application window to the AI employee's workspace scope.
    */
   public addWindow(win: WindowIdentity): void {
-    if (!win.hwnd || !/^\d+$/.test(win.hwnd)) {
-      throw new Error(`Invalid HWND: ${win.hwnd}`);
+    if (!win.hwnd || !/^(?:0x[0-9a-fA-F]+|\d+|[a-zA-Z0-9_.-]+)$/.test(win.hwnd)) {
+      throw new Error(`Invalid HWND / Window ID: ${win.hwnd}`);
     }
     this.scope.set(win.hwnd, { ...win });
     if (!this.activeHwnd) {

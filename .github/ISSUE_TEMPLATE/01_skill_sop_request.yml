@@ -1,0 +1,35 @@
+name: 提案或贡献新业务技能 SOP (Skill SOP Proposal)
+description: 提交一个新的 Markdown 业务技能流程（如财务发票、电商上新、HR审批、微信运营）
+title: "[Skill Proposal]: "
+labels: ["skill-hub", "enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢为 GhostDesk 贡献新的业务流程！
+        所有技能均采用人类可读的 Markdown 格式编写，无需任何底层代码。
+  - type: input
+    id: skill_name
+    attributes:
+      label: 技能名称 (Skill Name)
+      placeholder: "例如：企微客户意向线索同步至本地 CRM"
+    validations:
+      required: true
+  - type: textarea
+    id: involved_apps
+    attributes:
+      label: 涉及的软件与进程 (Involved Applications)
+      placeholder: "例如：wxwork.exe / Chrome.app / Excel"
+    validations:
+      required: true
+  - type: textarea
+    id: sop_steps
+    attributes:
+      label: SOP 核心步骤草案 (Step Sequence)
+      placeholder: |
+        ### Step 1: 检索未读会话
+        - Target: wxwork.exe
+        - Action: 点击待办标签
+        - Expect: 列表刷新完成
+    validations:
+      required: true

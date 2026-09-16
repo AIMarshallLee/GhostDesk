@@ -21,6 +21,19 @@ export const HIGH_RISK_PROCESSES = new Set([
   'alipay.exe',
   'jdworkbench.exe',
   'pop.exe',
+  // macOS application processes
+  'wechat',
+  'weixin',
+  'wxwork',
+  'dingtalk',
+  'feishu',
+  'lark',
+  'aliworkbench',
+  'pinduoduo',
+  'douyin',
+  'xiaohongshu',
+  'alipay',
+  'tiktok',
 ]);
 
 /**
@@ -45,6 +58,26 @@ export const SAFE_OFFICE_PROCESSES = new Set([
   'cmd.exe',
   'powershell.exe',
   'windowsterminal.exe',
+  // macOS application processes
+  'excel',
+  'microsoft excel',
+  'word',
+  'microsoft word',
+  'powerpoint',
+  'microsoft powerpoint',
+  'wps',
+  'wps office',
+  'chrome',
+  'google chrome',
+  'safari',
+  'firefox',
+  'notes',
+  'textedit',
+  'finder',
+  'terminal',
+  'iterm',
+  'iterm2',
+  'calculator',
 ]);
 
 export interface PolicyDecision {
@@ -55,17 +88,19 @@ export interface PolicyDecision {
 
 /**
  * Resolves whether an operation should execute via the Ghost Channel (Pico Hardware HID)
- * or the Fast Channel (direct high-speed injection).
+ * or the Fast Channel (direct high-speed injection). Supports both Windows (.exe) and macOS apps.
  *
- * @param processName The executable name of the target application (e.g. "wechat.exe")
+ * @param processName The executable name of the target application (e.g. "wechat.exe" or "WeChat" on macOS)
  * @param userPolicy Optional user override policy ('auto' | 'ghost' | 'fast')
  */
 export function resolveExecutionChannel(
   processName: string | undefined,
   userPolicy: ChannelPolicy = 'auto',
 ): PolicyDecision {
-  const normalized = (processName ?? '').trim().toLowerCase();
-  const isHighRisk = HIGH_RISK_PROCESSES.has(normalized);
+  const raw = (processName ?? '').trim().toLowerCase();
+  const stripped = raw.replace(/\.exe$/i, '').replace(/\.app$/i, '');
+  const isHighRisk = HIGH_RISK_PROCESSES.has(raw) || HIGH_RISK_PROCESSES.has(stripped);
+  const normalized = raw;
 
   // User explicit override
   if (userPolicy === 'ghost') {
@@ -102,7 +137,8 @@ export function resolveExecutionChannel(
     };
   }
 
-  if (SAFE_OFFICE_PROCESSES.has(normalized)) {
+  const isSafe = SAFE_OFFICE_PROCESSES.has(raw) || SAFE_OFFICE_PROCESSES.has(stripped);
+  if (isSafe) {
     return {
       channel: 'fast',
       reason: `Target "${normalized}" identified as safe office/browser application. Routed to Fast Channel.`,

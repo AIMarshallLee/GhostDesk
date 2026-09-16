@@ -1,0 +1,42 @@
+name: Daily Nightly Release
+
+on:
+  schedule:
+    # Runs daily at 02:00 UTC (10:00 AM CST)
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+jobs:
+  build-and-package:
+    name: Build Nightly Windows & macOS Packages
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Desktop & Web Assets
+        run: |
+          npm run build
+          npm run build:desktop
+
+      - name: Package Firmware UF2 Artifact
+        run: |
+          mkdir -p release-artifacts
+          cp firmware/release/flowdesk_usb_bridge.uf2 release-artifacts/
+
+      - name: Upload Nightly Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ghostdesk-nightly-${{ github.sha }}
+          path: release-artifacts/
+          retention-days: 7

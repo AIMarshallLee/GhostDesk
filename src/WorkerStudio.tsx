@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import {
   Bot,
   Play,
@@ -16,8 +16,119 @@ import { Button } from './components';
 import { BUILTIN_SKILL_ORDER_TO_EXCEL, type SkillDefinition } from '../desktop/skill-engine';
 import './worker-studio.css';
 
+export const ALL_STUDIO_SKILLS: SkillDefinition[] = [
+  BUILTIN_SKILL_ORDER_TO_EXCEL,
+  {
+    id: 'skill_feishu_leave_approval',
+    name: '飞书请假审批自动流转',
+    description: '自动读取飞书工作台待办审批，比对考勤系统并执行自动化核准',
+    version: '1.0.0',
+    requiredProcesses: ['feishu.exe', 'chrome.exe'],
+    steps: [
+      {
+        id: 'step_1',
+        name: '打开飞书待办审批列表',
+        targetProcess: 'feishu.exe',
+        instruction: '点击飞书工作台【审批】进入待审批列表',
+        expectedOutcome: '审批单列表加载完成',
+        channelPreference: 'ghost',
+      },
+      {
+        id: 'step_2',
+        name: '提取审批单关键信息',
+        targetProcess: 'feishu.exe',
+        instruction: '提取申请人、事由与请假天数',
+        expectedOutcome: '表单字段捕获完毕',
+        channelPreference: 'ghost',
+      },
+      {
+        id: 'step_3',
+        name: '切换考勤系统核准额度',
+        targetProcess: 'chrome.exe',
+        instruction: '在 HR SaaS 中核验年假余额',
+        expectedOutcome: '返回可用额度充足',
+        channelPreference: 'fast',
+      },
+      {
+        id: 'step_4',
+        name: '飞书审批执行通过',
+        targetProcess: 'feishu.exe',
+        instruction: '点击【同意】并提交核准批语',
+        expectedOutcome: '审批流转完成移出待办',
+        channelPreference: 'ghost',
+      },
+    ],
+  },
+  {
+    id: 'skill_tax_invoice_export',
+    name: '增值税发票批量下载导出',
+    description: '自动登录税务系统，批量下载发票版式并另存对账底表',
+    version: '1.0.0',
+    requiredProcesses: ['chrome.exe', 'excel.exe'],
+    steps: [
+      {
+        id: 'step_1',
+        name: '进入电子税务发票查询页',
+        targetProcess: 'chrome.exe',
+        instruction: '进入【发票查询及开具】表单',
+        expectedOutcome: '查询表单已呈现',
+        channelPreference: 'fast',
+      },
+      {
+        id: 'step_2',
+        name: '批量打包下载发票版式',
+        targetProcess: 'chrome.exe',
+        instruction: '全选当月开票并批量下载 PDF',
+        expectedOutcome: '下载压缩包保存至本地',
+        channelPreference: 'ghost',
+      },
+      {
+        id: 'step_3',
+        name: '导出对账清单并格式化 Excel',
+        targetProcess: 'excel.exe',
+        instruction: '在 Excel 中整理边框并按金额排序',
+        expectedOutcome: '财务底稿完成并安全保存',
+        channelPreference: 'fast',
+      },
+    ],
+  },
+  {
+    id: 'skill_xiaohongshu_lead_capture',
+    name: '小红书高意向线索归档',
+    description: '巡检创作者后台私信，语义识别手机微信并推送销售群',
+    version: '1.0.0',
+    requiredProcesses: ['chrome.exe', 'wechat.exe'],
+    steps: [
+      {
+        id: 'step_1',
+        name: '巡检小红书未读私信',
+        targetProcess: 'chrome.exe',
+        instruction: '筛选创作者中心意向咨询',
+        expectedOutcome: '最新会话列表已加载',
+        channelPreference: 'fast',
+      },
+      {
+        id: 'step_2',
+        name: '语义捕获联系方式',
+        targetProcess: 'chrome.exe',
+        instruction: '提取 11 位手机号与微信 ID',
+        expectedOutcome: '成功截获意向联系人',
+        channelPreference: 'ghost',
+      },
+      {
+        id: 'step_3',
+        name: '微信销售群实时通报',
+        targetProcess: 'wechat.exe',
+        instruction: '通过硬件防封通道粘贴线索卡片并回车发送',
+        expectedOutcome: '销售群成功接收新线索',
+        channelPreference: 'ghost',
+      },
+    ],
+  },
+];
+
 export default function WorkerStudio() {
-  const [selectedSkill, setSelectedSkill] = useState<SkillDefinition>(BUILTIN_SKILL_ORDER_TO_EXCEL);
+  const [selectedSkill, setSelectedSkill] = useState<SkillDefinition>(ALL_STUDIO_SKILLS[0]);
   const [workerStatus, setWorkerStatus] = useState<'idle' | 'running' | 'completed' | 'paused'>('idle');
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [progress, setProgress] = useState(0);
@@ -30,6 +141,16 @@ export default function WorkerStudio() {
   const addLog = (msg: string) => {
     const time = new Date().toLocaleTimeString();
     setLogs((prev) => [...prev.slice(-30), `[${time}] ${msg}`]);
+  };
+
+  const switchSkill = (skill: SkillDefinition) => {
+    if (workerStatus === 'running') return;
+    setSelectedSkill(skill);
+    setWorkerStatus('idle');
+    setCurrentStepIndex(0);
+    setProgress(0);
+    setSavedTokens(0);
+    addLog(`[System] 已切换岗位业务技能: ${skill.name}`);
   };
 
   const startWorker = async () => {
@@ -73,7 +194,7 @@ export default function WorkerStudio() {
             <Bot size={26} color="#2563eb" />
             数字员工工作台 (AI Worker Studio)
           </h1>
-          <p>基于硬件防封外设与混合快慢通道的 Windows 数字员工自主调度中心</p>
+          <p>基于硬件防封外设与混合快慢通道的 Windows & macOS 数字员工自主调度中心</p>
         </div>
         <div style={{ display: 'flex', gap: '10px' }}>
           {workerStatus !== 'running' ? (
@@ -92,10 +213,38 @@ export default function WorkerStudio() {
         {/* 左侧：技能选择与受控工作空间 */}
         <div className="studio-card">
           <h2>
-            <Layers size={18} /> 岗位业务技能 (Skill Registry)
+            <Layers size={18} /> 岗位业务技能工坊 (Skill Registry)
           </h2>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '12px' }}>
+            {ALL_STUDIO_SKILLS.map((skill) => {
+              const isCur = skill.id === selectedSkill.id;
+              return (
+                <div
+                  key={skill.id}
+                  onClick={() => switchSkill(skill)}
+                  style={{
+                    padding: '8px 10px',
+                    borderRadius: '6px',
+                    border: isCur ? '2px solid #2563eb' : '1px solid #e2e8f0',
+                    background: isCur ? '#eff6ff' : '#f8fafc',
+                    cursor: workerStatus === 'running' ? 'not-allowed' : 'pointer',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  <div style={{ fontWeight: 600, fontSize: '13px', color: isCur ? '#1d4ed8' : '#334155' }}>
+                    {skill.name}
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
+                    {skill.steps.length} 步骤 · {skill.requiredProcesses.join(', ')}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
           <div className="skill-selector">
-            <div className={`skill-card is-selected`}>
+            <div className="skill-card is-selected">
               <div className="skill-card-top">
                 <h3>{selectedSkill.name}</h3>
                 <span className="channel-tag ghost">双通道混合</span>
@@ -133,7 +282,7 @@ export default function WorkerStudio() {
                     <div style={{ flex: 1 }}>
                       <strong>{step.name}</strong>
                       <div style={{ fontSize: '11px', color: '#64748b' }}>
-                        {step.targetProcess} · {step.channelPreference === 'fast' ? 'Fast 快通道' : 'Ghost 硬件通道'}
+                        {step.targetProcess} · {step.channelPreference === 'fast' ? '⚡ Fast 快通道' : '👻 Ghost 硬件通道'}
                       </div>
                     </div>
                   </div>

@@ -13,6 +13,10 @@
 
 [English](README.md) | [中文说明](README_CN.md)
 
+<p align="center">
+  <img src="docs/assets/worker-studio-preview.svg" alt="GhostDesk AI Worker Studio Preview" width="100%" />
+</p>
+
 ---
 
 ## 💡 What is GhostDesk? / 什么是 GhostDesk？

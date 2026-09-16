@@ -1,0 +1,202 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 540" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#090d16" />
+      <stop offset="100%" stop-color="#0f172a" />
+    </linearGradient>
+    <linearGradient id="primaryGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#3b82f6" />
+      <stop offset="100%" stop-color="#06b6d4" />
+    </linearGradient>
+    <linearGradient id="accentGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#10b981" />
+      <stop offset="100%" stop-color="#059669" />
+    </linearGradient>
+    <filter id="shadow" x="-5%" y="-5%" width="110%" height="110%">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#000000" flood-opacity="0.6" />
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="960" height="540" fill="url(#bgGrad)" rx="16" />
+
+  <!-- App Window Container -->
+  <g filter="url(#shadow)" transform="translate(30, 25)">
+    <!-- Window Frame -->
+    <rect width="900" height="490" rx="12" fill="#111827" stroke="#1f2937" stroke-width="1.5" />
+
+    <!-- Title Bar -->
+    <rect width="900" height="48" rx="12" fill="#1e293b" />
+    <rect y="36" width="900" height="12" fill="#1e293b" />
+    <line x1="0" y1="48" x2="900" y2="48" stroke="#334155" stroke-width="1" />
+
+    <!-- Window Dots -->
+    <circle cx="24" cy="24" r="6" fill="#ef4444" />
+    <circle cx="44" cy="24" r="6" fill="#f59e0b" />
+    <circle cx="64" cy="24" r="6" fill="#10b981" />
+
+    <!-- Window Title -->
+    <text x="90" y="29" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="14" font-weight="700" fill="#f8fafc">
+      GhostDesk 👻 Worker Studio v1.0.0 — Hardware-in-the-Loop Desktop AI Substrate
+    </text>
+
+    <!-- Hardware Status Badge -->
+    <rect x="650" y="12" width="230" height="24" rx="12" fill="#064e3b" stroke="#059669" stroke-width="1" />
+    <circle cx="666" cy="24" r="4" fill="#34d399" />
+    <text x="678" y="28" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="11" font-weight="600" fill="#a7f3d0">
+      Pico RP2040: CONNECTED (HID)
+    </text>
+
+    <!-- Left Panel: Skill Registry -->
+    <g transform="translate(20, 64)">
+      <!-- Card Container -->
+      <rect width="410" height="406" rx="8" fill="#182234" stroke="#253349" stroke-width="1" />
+
+      <!-- Section Title -->
+      <text x="16" y="28" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="13" font-weight="700" fill="#93c5fd">
+        ⚙️ 岗位业务技能工坊 (Skill Registry)
+      </text>
+
+      <!-- Skill 1 (Selected) -->
+      <rect x="16" y="44" width="378" height="68" rx="6" fill="#1e293b" stroke="#3b82f6" stroke-width="1.5" />
+      <text x="28" y="66" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="13" font-weight="700" fill="#ffffff">
+        微信订单自动归档至 Excel
+      </text>
+      <rect x="300" y="52" width="82" height="18" rx="4" fill="#7c2d12" />
+      <text x="308" y="65" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="10" font-weight="600" fill="#fdba74">
+        双通道混合
+      </text>
+      <text x="28" y="85" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="11" fill="#94a3b8">
+        提取客户订单 -> 录入 Excel 表格 -> 微信确认回复
+      </text>
+      <text x="28" y="102" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="10" fill="#64748b">
+        白名单进程: wechat.exe, excel.exe (受控工作空间)
+      </text>
+
+      <!-- Skill 2 -->
+      <rect x="16" y="120" width="184" height="44" rx="6" fill="#131d2e" stroke="#202e44" stroke-width="1" />
+      <text x="24" y="138" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="11" font-weight="600" fill="#cbd5e1">
+        飞书审批自动流转
+      </text>
+      <text x="24" y="153" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="9.5" fill="#64748b">
+        feishu.exe · chrome.exe
+      </text>
+
+      <!-- Skill 3 -->
+      <rect x="210" y="120" width="184" height="44" rx="6" fill="#131d2e" stroke="#202e44" stroke-width="1" />
+      <text x="218" y="138" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="11" font-weight="600" fill="#cbd5e1">
+        增值税发票批量导出
+      </text>
+      <text x="218" y="153" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="9.5" fill="#64748b">
+        chrome.exe · excel.exe
+      </text>
+
+      <!-- Subgoal Steps -->
+      <text x="16" y="190" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12" font-weight="700" fill="#e2e8f0">
+        SOP 执行步骤分解 (Subgoals)
+      </text>
+
+      <!-- Step 1 (Done) -->
+      <rect x="16" y="202" width="378" height="42" rx="6" fill="#142019" stroke="#166534" stroke-width="1" />
+      <circle cx="34" cy="223" r="7" fill="#16a34a" />
+      <text x="31" y="226" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="10" font-weight="700" fill="#ffffff">✓</text>
+      <text x="48" y="220" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="11" font-weight="600" fill="#f0fdf4">
+        1. 读取微信客户订单消息
+      </text>
+      <text x="48" y="234" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="10" fill="#86efac">
+        Ghost 硬件通道 · 物理键鼠注入 (Anti-Ban)
+      </text>
+
+      <!-- Step 2 (Done) -->
+      <rect x="16" y="250" width="378" height="42" rx="6" fill="#142019" stroke="#166534" stroke-width="1" />
+      <circle cx="34" cy="271" r="7" fill="#16a34a" />
+      <text x="31" y="274" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="10" font-weight="700" fill="#ffffff">✓</text>
+      <text x="48" y="268" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="11" font-weight="600" fill="#f0fdf4">
+        2. 安全切换至 Excel 订单表
+      </text>
+      <text x="48" y="282" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="10" fill="#86efac">
+        Fast 快通道 · 50ms 瞬时切窗白名单校验
+      </text>
+
+      <!-- Step 3 (Active) -->
+      <rect x="16" y="298" width="378" height="42" rx="6" fill="#1e293b" stroke="#3b82f6" stroke-width="1.5" />
+      <circle cx="34" cy="319" r="7" fill="#2563eb" />
+      <circle cx="34" cy="319" r="3" fill="#ffffff" />
+      <text x="48" y="316" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="11" font-weight="700" fill="#ffffff">
+        3. 高速录入订单明细并保存
+      </text>
+      <text x="48" y="330" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="10" fill="#60a5fa">
+        ⚡ Fast 快通道 (节省 ~350 tokens)
+      </text>
+
+      <!-- Step 4 (Pending) -->
+      <rect x="16" y="346" width="378" height="42" rx="6" fill="#131d2e" stroke="#202e44" stroke-width="1" />
+      <circle cx="34" cy="367" r="7" fill="#334155" />
+      <text x="48" y="364" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="11" font-weight="500" fill="#64748b">
+        4. 切回微信发送确认通知
+      </text>
+      <text x="48" y="378" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="10" fill="#475569">
+        Ghost 慢通道 · 全拼模拟打字回复客户
+      </text>
+    </g>
+
+    <!-- Right Panel: Live Worker Dashboard -->
+    <g transform="translate(450, 64)">
+      <rect width="430" height="406" rx="8" fill="#182234" stroke="#253349" stroke-width="1" />
+
+      <!-- Section Title -->
+      <text x="16" y="28" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="13" font-weight="700" fill="#93c5fd">
+        📈 员工上班运行态 (Worker Live Dashboard)
+      </text>
+
+      <!-- Progress Banner Container -->
+      <rect x="16" y="44" width="398" height="96" rx="8" fill="#0f172a" stroke="#1e293b" stroke-width="1" />
+
+      <text x="30" y="70" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12" fill="#94a3b8">
+        当前状态:
+      </text>
+      <text x="88" y="70" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12" font-weight="700" fill="#38bdf8">
+        正在自主执行 (Running Autonomous)
+      </text>
+      <text x="360" y="70" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="14" font-weight="800" fill="#38bdf8">
+        75%
+      </text>
+
+      <!-- Progress Bar Track -->
+      <rect x="30" y="80" width="370" height="8" rx="4" fill="#334155" />
+      <!-- Progress Bar Fill -->
+      <rect x="30" y="80" width="277" height="8" rx="4" fill="url(#primaryGrad)" />
+
+      <!-- Stats Pill 1 -->
+      <rect x="30" y="100" width="130" height="26" rx="13" fill="#1e293b" stroke="#334155" stroke-width="1" />
+      <text x="42" y="117" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="11" font-weight="600" fill="#f87171">
+        🛡️ 物理防封: 正常
+      </text>
+
+      <!-- Stats Pill 2 -->
+      <rect x="170" y="100" width="180" height="26" rx="13" fill="#1e293b" stroke="#334155" stroke-width="1" />
+      <text x="182" y="117" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="11" font-weight="600" fill="#34d399">
+        ⚡ 节省 Token: ~1,400
+      </text>
+
+      <!-- Terminal Logs -->
+      <text x="16" y="165" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12" font-weight="700" fill="#e2e8f0">
+        💻 实时运行日志 (Live Activity Terminal)
+      </text>
+
+      <rect x="16" y="178" width="398" height="212" rx="6" fill="#090d16" stroke="#1e293b" stroke-width="1" />
+
+      <g font-family="'JetBrains Mono', 'Fira Code', 'Courier New', monospace" font-size="10.5" fill="#e2e8f0">
+        <text x="28" y="202" fill="#64748b">[14:20:00] [System] GhostDesk AI 员工底座已就绪。</text>
+        <text x="28" y="222" fill="#38bdf8">[14:20:01] [Dispatch] 派遣数字员工: 微信订单自动归档至 Excel</text>
+        <text x="28" y="242" fill="#a7f3d0">[14:20:02] [Step 1/4] 定位最新微信未读客户订单</text>
+        <text x="28" y="262" fill="#fb923c">[14:20:03] [Channel] 命中微信 -> Ghost 慢通道 (Pico USB 物理击键)</text>
+        <text x="28" y="282" fill="#a7f3d0">[14:20:05] [Step 2/4] 切窗至 Excel 订单流水表</text>
+        <text x="28" y="302" fill="#4ade80">[14:20:06] [Channel] 命中 Excel -> Fast 快通道 (50ms 极速注入)</text>
+        <text x="28" y="322" fill="#a7f3d0">[14:20:07] [Step 3/4] 正在批量写入订单 SKU 数据...</text>
+        <text x="28" y="342" fill="#e879f9">[14:20:08] [Watchdog] 步进心跳正常 · 自愈反思器已就绪</text>
+        <text x="28" y="362" fill="#38bdf8">[14:20:09] ── 累计节省 VLM Token: 1,400 ──</text>
+      </g>
+    </g>
+  </g>
+</svg>

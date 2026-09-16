@@ -67,9 +67,9 @@ graph TD
         FAST["Fast Channel: High-Speed Native Driver (50ms)"]
     end
 
-    subgraph Target_OS ["Windows 11 Target Workspace"]
+    subgraph Target_OS ["Operating System Workspaces (Windows 10/11 & macOS Sonoma/Sequoia)"]
         SENSITIVE["High-Risk Apps (WeChat / DingTalk / E-Commerce)"]
-        OFFICE["Safe Apps (Excel / Chrome / Local ERP / Notepad)"]
+        OFFICE["Safe Apps (Excel / Chrome / Safari / Local ERP)"]
     end
 
     Agent_Ecosystem <--> Core_Substrate
@@ -86,13 +86,15 @@ graph TD
 ## ⚡ Quick Start / 快速上手
 
 ### 1. Prerequisites
-- **OS**: Windows 11 x64
-- **Node.js**: v20+ / npm v10+
-- **Python (Optional for SDK)**: Python 3.10+
-- *(Optional for Hardware Mode)*: Raspberry Pi Pico 1 (RP2040) board + Micro-USB cable (~$3-4)
+- **Operating System**:
+  - 🪟 **Windows**: Windows 10 / Windows 11 (x64)
+  - 🍎 **macOS**: macOS 12+ (Monterey / Ventura / Sonoma / Sequoia) with native **Apple Silicon (M1/M2/M3/M4)** and Intel x86_64 support
+- **Runtime**: Node.js v20+ / npm v10+
+- **Python (Optional)**: Python 3.10+ (for Python SDK and M5Stack CoreS3 walkie-talkie daemon)
+- *(Optional Hardware)*: Raspberry Pi Pico 1 (RP2040) or M5Stack CoreS3 (ESP32-S3) via USB-C / USB-A cable
 
-### 2. Installation
-```powershell
+### 2. Installation & Automated Tests
+```bash
 # Clone the repository
 git clone https://github.com/AIMarshallLee/GhostDesk.git
 cd GhostDesk
@@ -100,23 +102,44 @@ cd GhostDesk
 # Install dependencies
 npm ci
 
-# Run test suite (43+ substrate unit tests)
+# Run test suite (236 cross-platform & hardware unit tests)
 npm test
 ```
 
 ### 3. Launching
 - **Worker Studio (Desktop App)**:
-  ```powershell
+  ```bash
   npm run desktop
   ```
 - **Developer Software-Only Mode (No Hardware Needed)**:
-  ```powershell
-  $env:FLOWDESK_DEV_MODE="1"; npm run desktop
-  ```
+  - Windows (PowerShell): `$env:FLOWDESK_DEV_MODE="1"; npm run desktop`
+  - macOS / Linux: `FLOWDESK_DEV_MODE=1 npm run desktop`
 - **Local MCP Server**:
-  ```powershell
+  ```bash
   npx tsx desktop/mcp-server.ts
   ```
+
+---
+
+## 🍎 Native macOS Support & Configuration Guide
+
+GhostDesk includes full native macOS integration via [`desktop/macos-adapter.ts`](desktop/macos-adapter.ts):
+
+1. 🔌 **Zero-Driver Hardware-in-the-Loop (HITL)**:
+   - Raspberry Pi Pico and M5Stack CoreS3 report standard USB HID Keyboard and Mouse descriptors.
+   - Plugged into your Mac's USB-C port, macOS recognizes it as a genuine external physical peripheral without requiring kernel extensions (kext) or disabling SIP.
+2. 🔍 **Automatic CDC Serial Port Discovery**:
+   - The substrate scans `/dev/cu.usbmodem*` to auto-detect Pico and CoreS3 hardware dongles with millisecond-level handshaking.
+3. ⌨️ **Intelligent Key Modifier Translation**:
+   - Automatically maps automation key combinations to macOS native standards:
+     - `Ctrl / Win` -> `Command ⌘`
+     - `Alt` -> `Option ⌥`
+     - `Backspace` -> `Delete ⌫`
+     - `Enter` -> `Return ↩`
+4. 🖥️ **macOS Window Focus & Guarding (AppleScript & Quartz)**:
+   - Integrates with AppleScript and Quartz Window Services to reliably focus and switch target apps by Bundle ID (e.g. `com.tencent.xinWeChat`, `com.google.Chrome`, `com.apple.Safari`).
+5. 🛡️ **System Permissions**:
+   - When running on macOS for the first time, simply allow GhostDesk in **System Settings -> Privacy & Security -> Accessibility**.
 
 ---
 

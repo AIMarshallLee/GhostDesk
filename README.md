@@ -6,7 +6,7 @@
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS-blue)](https://github.com/AIMarshallLee/GhostDesk)
 [![CI](https://github.com/AIMarshallLee/GhostDesk/actions/workflows/ci.yml/badge.svg)](https://github.com/AIMarshallLee/GhostDesk/actions/workflows/ci.yml)
-[![Hardware](https://img.shields.io/badge/hardware-Raspberry%20Pi%20Pico%20RP2040-red)](https://www.raspberrypi.com/products/raspberry-pi-pico/)
+[![Hardware](https://img.shields.io/badge/hardware-Raspberry%20Pi%20Pico%20%7C%20M5Stack%20CoreS3-red)](firmware/)
 [![Models](https://img.shields.io/badge/models-Gemini%20%7C%20UI--TARS%201.5%20%7C%20Qwen2.5--VL-green)](https://ai.google.dev/)
 [![MCP](https://img.shields.io/badge/MCP-Model%20Context%20Protocol-purple)](https://modelcontextprotocol.io/)
 [![Python SDK](https://img.shields.io/badge/python-LangGraph%20%7C%20CrewAI-yellow)](sdk/python/)
@@ -186,12 +186,21 @@ Save to `skills/` directory and GhostDesk will automatically discover and regist
 
 ## 🔌 Hardware Setup (30-Second Flashing) / 硬件烧录
 
-GhostDesk uses standard **Raspberry Pi Pico 1 (RP2040)**:
+GhostDesk supports two reliable hardware execution options:
+
+### Option A: Ultra-Low Cost — Raspberry Pi Pico 1 (RP2040, ~$2)
 1. Hold down the **BOOTSEL** button on your Pico and plug it into your computer via USB.
 2. A mass storage drive named `RPI-RP2` will appear.
 3. Drag and drop `firmware/release/flowdesk_usb_bridge.uf2` onto the `RPI-RP2` drive.
 4. The Pico will reboot automatically as an authentic USB HID controller.
-5. In GhostDesk Desktop, navigate to **USB Hardware**; the device is auto-detected!
+
+### Option B: Interactive Smart Touch Terminal — M5Stack CoreS3 (ESP32-S3)
+> Features a 2.0" IPS touch screen, audio alarms, and a **Physical Emergency Kill-Switch**!
+1. **Web Browser 1-Click Flasher**: Open [firmware/m5stack_cores3/web_flasher.html](firmware/m5stack_cores3/web_flasher.html) in Chrome or Edge, connect CoreS3 via USB-C, and flash with one click.
+2. **From Source**: Compile and upload via VS Code + PlatformIO or Arduino IDE (see [firmware/m5stack_cores3/README.md](firmware/m5stack_cores3/README.md)).
+3. Once booted, the CoreS3 screen visualizes real-time AI action logs, heartbeat lease status, and an interactive red Emergency Stop button.
+
+Once connected, open **USB Hardware** in the GhostDesk Desktop app to automatically pair.
 
 ---
 

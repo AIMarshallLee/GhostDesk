@@ -6,7 +6,7 @@
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS-blue)](https://github.com/AIMarshallLee/GhostDesk)
 [![CI](https://github.com/AIMarshallLee/GhostDesk/actions/workflows/ci.yml/badge.svg)](https://github.com/AIMarshallLee/GhostDesk/actions/workflows/ci.yml)
-[![Hardware](https://img.shields.io/badge/hardware-Raspberry%20Pi%20Pico%20RP2040-red)](https://www.raspberrypi.com/products/raspberry-pi-pico/)
+[![Hardware](https://img.shields.io/badge/hardware-Raspberry%20Pi%20Pico%20%7C%20M5Stack%20CoreS3-red)](firmware/)
 [![Models](https://img.shields.io/badge/models-Gemini%20%7C%20UI--TARS%201.5%20%7C%20Qwen2.5--VL-green)](https://ai.google.dev/)
 [![MCP](https://img.shields.io/badge/MCP-Model%20Context%20Protocol-purple)](https://modelcontextprotocol.io/)
 [![Python SDK](https://img.shields.io/badge/python-LangGraph%20%7C%20CrewAI-yellow)](sdk/python/)
@@ -188,12 +188,21 @@ processes: [chrome.exe, excel.exe]
 
 ## 🔌 硬件极速烧录 (30 秒搞定)
 
-GhostDesk 使用业界广泛普及的 **树莓派 Pico 1 (RP2040)**：
+GhostDesk 支持两种高可靠硬件方案：
+
+### 方案 A：极简高性价比方案 —— 树莓派 Pico 1 (RP2040，约 15~20 元)
 1. 按住 Pico 板上的白色 **BOOTSEL** 按键，插上 USB 数据线连接电脑。
 2. 电脑会自动弹出一个名为 `RPI-RP2` 的可移动磁盘。
 3. 将本项目下的 `firmware/release/flowdesk_usb_bridge.uf2` 文件直接拖拽粘贴进该磁盘。
 4. Pico 自动重启，瞬间变身为合法的标准外部硬件 HID 键盘鼠标！
-5. 在 GhostDesk 客户端中打开 **USB 硬件控制**，设备即可秒级自动连接识别。
+
+### 方案 B：高端全彩触控带屏方案 —— M5Stack CoreS3 (ESP32-S3)
+> 拥有 2.0 寸全彩触控屏、声音报警与**物理急停按钮 (Kill Switch)**，AI 暴走误操作一触即停！
+1. **浏览器一键烧录 (Web Flasher)**：使用 Chrome / Edge 浏览器打开 [firmware/m5stack_cores3/web_flasher.html](firmware/m5stack_cores3/web_flasher.html)，插上 CoreS3 点击“安装固件”即可秒级完成烧录。
+2. **源码编译烧录**：支持 VS Code + PlatformIO / Arduino IDE 一键编译烧录（详见 [firmware/m5stack_cores3/README.md](firmware/m5stack_cores3/README.md)）。
+3. 烧录完成后，CoreS3 屏幕将实时显示 AI 动作日志、心跳租约以及底部物理急停大红钮。
+
+设备连接后，在 GhostDesk 客户端中打开 **USB 硬件控制**，设备即可秒级自动连接识别。
 
 ---
 

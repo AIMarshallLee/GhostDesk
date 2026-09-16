@@ -1,0 +1,6 @@
+.tools/
+build-ascii/
+build/*
+!build/flowdesk_usb_bridge.uf2
+build.err
+build.log

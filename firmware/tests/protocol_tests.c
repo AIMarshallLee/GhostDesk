@@ -1,0 +1,6 @@
+#include "protocol.h"
+#include <assert.h>
+#include <string.h>
+static flowdesk_command_t ok(const char*s){flowdesk_command_t c;const char*e;assert(flowdesk_parse_frame(s,strlen(s),&c,&e));return c;}
+static void no(const char*s,const char*x){flowdesk_command_t c;const char*e=0;assert(!flowdesk_parse_frame(s,strlen(s),&c,&e));assert(!strcmp(e,x));}
+int main(void){flowdesk_command_t c=ok("1\tbegin\t0123456789abcdef");assert(c.kind==FLOWDESK_BEGIN&&!strcmp(c.session,"0123456789abcdef"));c=ok("2\tmove\t0123456789abcdef\t-127\t127");assert(c.kind==FLOWDESK_MOVE&&c.x==-127&&c.y==127);c=ok("3\twheel\t0123456789abcdef\t-8");assert(c.kind==FLOWDESK_WHEEL&&c.y==-8);c=ok("4\tkey\t0123456789abcdef\tctrl+a");assert(c.key==FLOWDESK_KEY_CTRL_A);c=ok("5\tkey\t0123456789abcdef\tshift");assert(c.key==FLOWDESK_KEY_SHIFT);c=ok("6\tkey\t0123456789abcdef\tescape");assert(c.key==FLOWDESK_KEY_ESCAPE);c=ok("7\tkey\t0123456789abcdef\tpagedown");assert(c.key==FLOWDESK_KEY_PAGEDOWN);c=ok("8\ttext\t0123456789abcdef\tFlowDesk");assert(!strcmp(c.text,"FlowDesk"));no("9\tbegin\t0123456789ABCDEF","malformed");no("10\tmove\t0123456789abcdef\t128\t0","range");no("0\tstatus","bad_id");no("11\ttext\t0123456789abcdef\t中文","malformed");return 0;}

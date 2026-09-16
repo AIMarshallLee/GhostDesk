@@ -1,0 +1,41 @@
+{
+  "name": "ghostdesk",
+  "version": "0.7.0",
+  "description": "GhostDesk: Hardware-in-the-Loop Desktop AI Employee Substrate",
+  "type": "module",
+  "main": "desktop-build/main.cjs",
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "dev:web": "vite --host 127.0.0.1",
+    "dev:server": "tsx server/index.ts",
+    "build": "tsc --noEmit && vite build",
+    "build:desktop": "node scripts/build-desktop.mjs",
+    "desktop": "npm run build && npm run build:desktop && electron .",
+    "package:win": "npm run build && npm run build:desktop && node scripts/package-desktop.mjs",
+    "test": "tsx --test server/*.test.ts desktop/*.test.ts",
+    "start": "tsx server/index.ts"
+  },
+  "dependencies": {
+    "@fontsource-variable/dm-sans": "5.3.0",
+    "@fontsource-variable/noto-sans-sc": "5.3.0",
+    "@google/genai": "2.22.0",
+    "@ui-tars/sdk": "1.2.3",
+    "lucide-react": "1.45.0",
+    "pinyin-pro": "3.29.4",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "uuid": "11.1.0"
+  },
+  "devDependencies": {
+    "@electron/packager": "20.3.0",
+    "@types/node": "26.5.1",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.1.1",
+    "electron": "44.3.0",
+    "esbuild": "0.28.2",
+    "tsx": "4.23.13",
+    "typescript": "7.0.2",
+    "vite": "8.3.0"
+  }
+}

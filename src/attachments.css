@@ -1,0 +1,12 @@
+.attachment-layout { display: grid; grid-template-columns: minmax(320px, .9fr) minmax(360px, 1.1fr); gap: 24px; align-items: start; }
+.attachment-panel { padding: 24px; display: grid; gap: 18px; }
+.attachment-panel h2 { display: flex; align-items: center; gap: 10px; margin: 0; font-size: 18px; }
+.attachment-panel textarea { min-height: 140px; width: 100%; resize: vertical; }
+.attachment-panel .attachment-transcript { min-height: 240px; }
+.attachment-files { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; overflow-wrap: anywhere; }
+.attachment-files li { display: grid; gap: 4px; padding: 12px; background: #f4f6f7; border-radius: 8px; }
+.attachment-files span { color: #667085; font-size: 12px; }
+.attachment-knowledge { display: grid; gap: 10px; border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px; }
+.attachment-knowledge label { display: flex; gap: 8px; align-items: center; }
+.attachment-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+@media (max-width: 1100px) { .attachment-layout { grid-template-columns: 1fr; } }

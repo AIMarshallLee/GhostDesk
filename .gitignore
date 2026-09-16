@@ -1,0 +1,29 @@
+﻿# Dependencies
+node_modules/
+
+# Build artifacts
+dist/
+desktop-build/
+release/
+*.log
+*.tmp
+*.err
+
+# Runtime and persistent local data
+.flowdesk/
+.flowdesk-data/
+data/
+
+# Environment and secrets
+.env
+.env.local
+
+# Firmware build intermediates
+firmware/build/
+firmware/.tools/
+
+# OS and IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

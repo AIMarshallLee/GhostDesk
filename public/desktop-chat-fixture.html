@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FlowDesk 多会话虚构测试窗口</title>
+    <link rel="stylesheet" href="/desktop-chat-fixture.css" />
+  </head>
+  <body>
+    <main class="fixture" aria-label="FlowDesk 多会话虚构聊天测试窗口">
+      <aside class="sidebar">
+        <div class="brand">FlowDesk <span>虚构测试</span></div>
+        <div id="conversation-list" class="conversation-list" aria-label="会话列表"></div>
+      </aside>
+      <section class="chat">
+        <header id="chat-header" class="chat-header"></header>
+        <div id="messages" class="messages" aria-live="polite"></div>
+        <div class="composer-wrap">
+          <textarea id="composer" aria-label="消息输入框" placeholder="输入回复…"></textarea>
+          <div id="ime-candidates" class="ime-candidates" data-style="microsoft" aria-label="虚构输入法候选词" hidden></div>
+        </div>
+        <button id="send" type="button">发送</button>
+      </section>
+      <section class="test-tools" aria-label="虚构场景控制">
+        <span>场景控制</span>
+        <button type="button" data-inject="林小雨">林小雨来信</button>
+        <button type="button" data-inject="陈先生">陈先生来信</button>
+        <button type="button" data-inject="周女士">周女士来信</button>
+        <select id="fault" aria-label="发送故障">
+          <option value="normal">正常发送</option>
+          <option value="no_send">不发送</option>
+          <option value="delay">延迟发送</option>
+        </select>
+        <button id="close-fixture" type="button">关闭测试窗</button>
+      </section>
+    </main>
+    <script src="/desktop-chat-fixture.js"></script>
+  </body>
+</html>

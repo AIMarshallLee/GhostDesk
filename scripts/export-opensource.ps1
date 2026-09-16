@@ -26,7 +26,9 @@ $ExcludeDirs = @(
     ".flowdesk-data",
     "artifacts",
     "build",
-    ".tools"
+    ".tools",
+    "__pycache__",
+    "*.egg-info"
 )
 
 $ExcludeFiles = @(
@@ -212,6 +214,10 @@ release/
 *.log
 *.tmp
 *.err
+__pycache__/
+*.pyc
+*.egg-info/
+
 
 # Runtime and persistent local data
 .flowdesk/

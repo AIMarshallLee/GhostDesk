@@ -12,6 +12,7 @@ import ComputerUsePage from './ComputerUse';
 import DesktopRepliesPage from './DesktopReplies';
 import HardwarePage from './Hardware';
 import AttachmentsPage from './Attachments';
+import WorkerStudio from './WorkerStudio';
 
 export interface PageProps {
   state: AppState;
@@ -21,7 +22,7 @@ export interface PageProps {
   newTask: () => void;
 }
 const navItems = [
-  ['app', '工作概览', LayoutDashboard], ['autopilot', '回复模式实验室', WorkflowIcon], ['tasks', '任务中心', ListTodo], ['capture', '窗口助手', ScanLine],
+  ['app', '工作概览', LayoutDashboard], ['workers', '数字员工', Bot], ['autopilot', '回复模式实验室', WorkflowIcon], ['tasks', '任务中心', ListTodo], ['capture', '窗口助手', ScanLine],
   ['computer-use', '电脑操作', Bot], ['desktop-replies', '持续回复', MessagesSquare], ['attachments', '附件助手', ScanLine], ['hardware', 'USB 硬件', Usb], ['knowledge', '业务知识库', BookOpen], ['workflows', '工作流程', WorkflowIcon], ['audit', '活动记录', History],
 ] as const;
 function getRoute() { const hash = window.location.hash.slice(1); return ['top', 'capabilities', 'method', 'scenarios', 'faq'].includes(hash) ? 'home' : hash || (window.flowdesk ? 'app' : 'home'); }
@@ -67,6 +68,7 @@ export default function App() {
     <div className="workspace-main"><header className="app-topbar"><div className="breadcrumbs"><button className="icon-button mobile-toggle" onClick={() => setMobileMenu(true)} aria-label="打开导航"><Menu size={20} /></button><span>工作空间</span><span>/</span><strong>{title}</strong></div><div className="topbar-right"><button className="search-trigger" onClick={() => setShowSearch(true)}><Search size={16} /><span>搜索任务</span><kbd>Ctrl K</kbd></button><span className="environment-tag"><span />{window.flowdesk ? 'Windows 桌面端' : '本地浏览器版'}</span><button className="icon-button" onClick={() => navigate('home')} aria-label="查看官网"><ArrowUpRight size={18} /></button></div></header>
       <main className="app-content">{!state ? <div className="loading-state">{loadError ? <><AlertCircle size={34} /><h2>无法连接本地工作空间</h2><p>{loadError}</p><Button onClick={() => void refresh()}>重新连接</Button><code>npm run dev</code></> : <><LoaderCircle className="spin" size={28} /><p>正在打开你的工作空间…</p></>}</div> : props && <>
         {currentPage === 'app' && <Dashboard {...props} />}
+        {currentPage === 'workers' && <WorkerStudio />}
         {currentPage === 'autopilot' && <AutopilotPage />}
         {currentPage === 'tasks' && <Tasks {...props} />}
         {currentPage === 'task' && <TaskDetail {...props} taskId={route.split('/')[1]} capture={captureTaskId === route.split('/')[1] ? capture : undefined} />}
@@ -79,7 +81,7 @@ export default function App() {
         {currentPage === 'workflows' && <WorkflowPage {...props} />}
         {currentPage === 'audit' && <AuditPage {...props} />}
         {currentPage === 'settings' && <SettingsPage {...props} />}
-        {!['app', 'autopilot', 'tasks', 'task', 'capture', 'computer-use', 'desktop-replies', 'attachments', 'hardware', 'knowledge', 'workflows', 'audit', 'settings'].includes(currentPage) && <div className="empty"><h2>没有找到这个页面</h2><Button onClick={() => navigate()}>返回工作概览</Button></div>}
+        {!['app', 'workers', 'autopilot', 'tasks', 'task', 'capture', 'computer-use', 'desktop-replies', 'attachments', 'hardware', 'knowledge', 'workflows', 'audit', 'settings'].includes(currentPage) && <div className="empty"><h2>没有找到这个页面</h2><Button onClick={() => navigate()}>返回工作概览</Button></div>}
       </>}</main><footer className="app-footer"><span><Monitor size={13} />本地优先 · 由你掌控</span><span>FlowDesk / 让工作有序流动</span></footer>
     </div>
     {showNew && props && <NewTask {...props} onClose={() => setShowNew(false)} />}

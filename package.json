@@ -1,7 +1,8 @@
 {
-  "name": "ghostdesk",
-  "version": "0.9.0",
-  "description": "GhostDesk: The Open-Source Hardware-in-the-Loop Desktop AI Employee Substrate",
+  "name": "flowdesk",
+  "version": "0.7.0",
+  "private": true,
+  "description": "FlowDesk local-first visual operations assistant",
   "type": "module",
   "main": "desktop-build/main.cjs",
   "scripts": {

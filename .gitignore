@@ -8,6 +8,10 @@ release/
 *.log
 *.tmp
 *.err
+__pycache__/
+*.pyc
+*.egg-info/
+
 
 # Runtime and persistent local data
 .flowdesk/

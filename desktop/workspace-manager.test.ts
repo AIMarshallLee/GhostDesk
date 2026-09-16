@@ -109,3 +109,43 @@ test('multi-window workspace accepts macOS Quartz IDs and bundle strings', () =>
   assert.equal(ws.switchFocus('0x004A').process, 'Google Chrome');
 });
 
+test('validateWindowIntegrity defends against PID reuse and process spoofing', () => {
+  const ws = new MultiWindowWorkspace([winA]);
+
+  // Valid verification passes
+  assert.equal(ws.validateWindowIntegrity('1001', 1234, 'wechat.exe'), true);
+
+  // PID mismatch (e.g. process died and HWND was recycled by another PID)
+  assert.throws(
+    () => ws.validateWindowIntegrity('1001', 9999, 'wechat.exe'),
+    /PID mismatch for HWND 1001/,
+  );
+
+  // Process mismatch (e.g. malware spoofing HWND)
+  assert.throws(
+    () => ws.validateWindowIntegrity('1001', 1234, 'cmd.exe'),
+    /Process mismatch for HWND 1001/,
+  );
+
+  // Unregistered HWND
+  assert.throws(
+    () => ws.validateWindowIntegrity('7777', 1234, 'wechat.exe'),
+    /HWND 7777 is not registered/,
+  );
+});
+
+test('handles whitespace and colon window IDs correctly', () => {
+  const ws = new MultiWindowWorkspace();
+  ws.addWindow({
+    hwnd: ' win:4001 ',
+    pid: 200,
+    process: 'Code',
+    title: 'VSCode',
+  });
+
+  assert.equal(ws.isInScope('win:4001'), true);
+  assert.equal(ws.isInScope(' win:4001 '), true);
+  assert.equal(ws.getActiveWindow()?.hwnd, 'win:4001');
+});
+
+

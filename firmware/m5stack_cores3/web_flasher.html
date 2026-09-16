@@ -63,6 +63,14 @@
       </ol>
     </div>
 
+    <div id="file-protocol-warning" style="display:none;background:#7f1d1d;border:1px solid #ef4444;color:#fecaca;padding:12px 16px;border-radius:8px;font-size:13px;margin-bottom:16px;text-align:left;">
+      ⚠️ <b>提示：浏览器安全策略禁止在本地 <code>file://</code> 协议下访问 WebSerial 串口接口。</b><br/>
+      请使用轻量服务器打开本页面：<br/>
+      <code style="background:#450a0a;padding:2px 6px;border-radius:4px;display:inline-block;margin-top:6px;">npx serve .</code> 或 
+      <code style="background:#450a0a;padding:2px 6px;border-radius:4px;display:inline-block;margin-top:6px;">python -m http.server 8000</code><br/>
+      然后在 Chrome / Edge 中访问 <code>http://localhost:8000/web_flasher.html</code> 即可正常烧录！
+    </div>
+
     <esp-web-install-button manifest="./manifest.json">
       <button slot="activate" style="background:#0284c7;color:#fff;border:none;padding:12px 28px;border-radius:8px;font-size:16px;cursor:pointer;font-weight:600;">
         ⚡ 点击连接并烧录固件
@@ -70,5 +78,10 @@
       <span slot="unsupported">⚠️ 您的浏览器不支持 WebSerial，请使用 Google Chrome 或 Microsoft Edge 访问本页面。</span>
     </esp-web-install-button>
   </div>
+  <script>
+    if (window.location.protocol === 'file:') {
+      document.getElementById('file-protocol-warning').style.display = 'block';
+    }
+  </script>
 </body>
 </html>

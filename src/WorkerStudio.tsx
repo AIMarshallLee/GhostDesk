@@ -11,6 +11,7 @@ import {
   Layers,
   ArrowRight,
   TrendingUp,
+  Globe,
 } from 'lucide-react';
 import { Button } from './components';
 import { BUILTIN_SKILL_ORDER_TO_EXCEL, type SkillDefinition } from '../desktop/skill-engine';
@@ -127,15 +128,80 @@ export const ALL_STUDIO_SKILLS: SkillDefinition[] = [
   },
 ];
 
+const TRANSLATIONS = {
+  zh: {
+    title: '数字员工工作台 (AI Worker Studio)',
+    subtitle: '基于硬件防封外设与混合快慢通道的 Windows & macOS 数字员工自主调度中心',
+    toggleBtn: '🇨🇳 中文 / 🇺🇸 EN',
+    dispatch: '派遣员工上班',
+    recall: '召回员工',
+    registryTitle: '岗位业务技能工坊 (Skill Registry)',
+    whitelist: '受控应用白名单:',
+    stepsTitle: 'SOP 规划步骤:',
+    fastChannel: '⚡ Fast 快通道 (50ms 原生录入)',
+    ghostChannel: '👻 Ghost 慢通道 (Pico 硬件防封全拼)',
+    dashboardTitle: '员工上班运行态 (Worker Live Dashboard)',
+    statusLabel: '当前状态:',
+    statusRunning: '正在自主执行',
+    statusCompleted: '任务已圆满完成',
+    statusIdle: '就绪待命',
+    statAntiBan: '硬件防封: 正常',
+    statSavedTokens: '累计节省 Token:',
+    logTitle: '实时运行日志 (Live Activity Log)',
+    stepsCount: '步骤',
+    hybridTag: '双通道混合',
+    systemReady: '[System] GhostDesk AI 员工底座已就绪。',
+    hardwareReady: '[System] Pico USB 物理硬件在环已就位，混合通道已启用。',
+    switchedSkill: '[System] 已切换岗位业务技能: ',
+    dispatching: '[Dispatch] 派遣数字员工执行技能: ',
+    stepStart: '开始: ',
+    channelRouting: '[Channel] 策略路由 -> ',
+    taskDone: '[Completed] 员工已圆满完成全部 SOP 步骤并完成核对！',
+    stopped: '[System] 员工已被操作员安全停止。',
+  },
+  en: {
+    title: 'AI Worker Studio',
+    subtitle: 'Hardware-in-the-Loop & Hybrid Policy Autonomous AI Employee Substrate for Windows & macOS',
+    toggleBtn: '🇺🇸 EN / 🇨🇳 中文',
+    dispatch: 'Dispatch Worker',
+    recall: 'Recall Worker',
+    registryTitle: 'Skill Registry',
+    whitelist: 'Allowed Apps Whitelist:',
+    stepsTitle: 'SOP Planned Steps:',
+    fastChannel: '⚡ Fast Channel (50ms Native Entry)',
+    ghostChannel: '👻 Ghost Channel (Pico Hardware HID Pinyin)',
+    dashboardTitle: 'Worker Live Dashboard',
+    statusLabel: 'Status:',
+    statusRunning: 'Autonomously Running',
+    statusCompleted: 'Task Completed Successfully',
+    statusIdle: 'Idle & Ready',
+    statAntiBan: 'Hardware Anti-Ban: Active',
+    statSavedTokens: 'Tokens Saved:',
+    logTitle: 'Live Activity Log',
+    stepsCount: 'steps',
+    hybridTag: 'Hybrid Channel',
+    systemReady: '[System] GhostDesk AI Employee Substrate ready.',
+    hardwareReady: '[System] Pico USB HITL active, hybrid routing enabled.',
+    switchedSkill: '[System] Switched to skill: ',
+    dispatching: '[Dispatch] Dispatching digital worker for skill: ',
+    stepStart: 'Starting: ',
+    channelRouting: '[Channel] Policy routing -> ',
+    taskDone: '[Completed] Worker has completed all SOP steps successfully!',
+    stopped: '[System] Worker has been safely stopped by operator.',
+  },
+};
+
 export default function WorkerStudio() {
+  const [lang, setLang] = useState<'zh' | 'en'>('zh');
+  const t = TRANSLATIONS[lang];
   const [selectedSkill, setSelectedSkill] = useState<SkillDefinition>(ALL_STUDIO_SKILLS[0]);
   const [workerStatus, setWorkerStatus] = useState<'idle' | 'running' | 'completed' | 'paused'>('idle');
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [progress, setProgress] = useState(0);
   const [savedTokens, setSavedTokens] = useState(0);
   const [logs, setLogs] = useState<string[]>([
-    '[System] GhostDesk AI 员工底座已就绪。',
-    '[System] Pico USB 物理硬件在环已就位，混合通道已启用。',
+    TRANSLATIONS.zh.systemReady,
+    TRANSLATIONS.zh.hardwareReady,
   ]);
 
   const addLog = (msg: string) => {
@@ -150,7 +216,7 @@ export default function WorkerStudio() {
     setCurrentStepIndex(0);
     setProgress(0);
     setSavedTokens(0);
-    addLog(`[System] 已切换岗位业务技能: ${skill.name}`);
+    addLog(`${t.switchedSkill}${skill.name}`);
   };
 
   const startWorker = async () => {
@@ -159,15 +225,15 @@ export default function WorkerStudio() {
     setCurrentStepIndex(0);
     setProgress(0);
     setSavedTokens(0);
-    addLog(`[Dispatch] 派遣数字员工执行技能: ${selectedSkill.name}`);
+    addLog(`${t.dispatching}${selectedSkill.name}`);
 
     for (let i = 0; i < selectedSkill.steps.length; i++) {
       const step = selectedSkill.steps[i];
       setCurrentStepIndex(i);
       const isFast = step.channelPreference === 'fast';
-      const channelLabel = isFast ? '⚡ Fast 快通道 (50ms 原生录入)' : '👻 Ghost 慢通道 (Pico 硬件防封全拼)';
-      addLog(`[Step ${i + 1}/${selectedSkill.steps.length}] 开始: ${step.name}`);
-      addLog(`[Channel] 策略路由 -> ${channelLabel}`);
+      const channelLabel = isFast ? t.fastChannel : t.ghostChannel;
+      addLog(`[Step ${i + 1}/${selectedSkill.steps.length}] ${t.stepStart}${step.name}`);
+      addLog(`${t.channelRouting}${channelLabel}`);
 
       if (isFast) {
         setSavedTokens((prev) => prev + 350);
@@ -178,12 +244,12 @@ export default function WorkerStudio() {
     }
 
     setWorkerStatus('completed');
-    addLog('[Completed] 员工已圆满完成全部 SOP 步骤并完成核对！');
+    addLog(t.taskDone);
   };
 
   const stopWorker = () => {
     setWorkerStatus('idle');
-    addLog('[System] 员工已被操作员安全停止。');
+    addLog(t.stopped);
   };
 
   return (
@@ -192,18 +258,25 @@ export default function WorkerStudio() {
         <div>
           <h1>
             <Bot size={26} color="#2563eb" />
-            数字员工工作台 (AI Worker Studio)
+            {t.title}
           </h1>
-          <p>基于硬件防封外设与混合快慢通道的 Windows & macOS 数字员工自主调度中心</p>
+          <p>{t.subtitle}</p>
         </div>
-        <div style={{ display: 'flex', gap: '10px' }}>
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+          <Button
+            onClick={() => setLang((prev) => (prev === 'zh' ? 'en' : 'zh'))}
+            variant="secondary"
+            style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px' }}
+          >
+            <Globe size={15} /> {t.toggleBtn}
+          </Button>
           {workerStatus !== 'running' ? (
             <Button onClick={startWorker} variant="primary">
-              <Play size={16} /> 派遣员工上班
+              <Play size={16} /> {t.dispatch}
             </Button>
           ) : (
             <Button onClick={stopWorker} variant="secondary">
-              <Square size={16} /> 召回员工
+              <Square size={16} /> {t.recall}
             </Button>
           )}
         </div>
@@ -213,7 +286,7 @@ export default function WorkerStudio() {
         {/* 左侧：技能选择与受控工作空间 */}
         <div className="studio-card">
           <h2>
-            <Layers size={18} /> 岗位业务技能工坊 (Skill Registry)
+            <Layers size={18} /> {t.registryTitle}
           </h2>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '12px' }}>
@@ -236,7 +309,7 @@ export default function WorkerStudio() {
                     {skill.name}
                   </div>
                   <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
-                    {skill.steps.length} 步骤 · {skill.requiredProcesses.join(', ')}
+                    {skill.steps.length} {t.stepsCount} · {skill.requiredProcesses.join(', ')}
                   </div>
                 </div>
               );
@@ -247,11 +320,11 @@ export default function WorkerStudio() {
             <div className="skill-card is-selected">
               <div className="skill-card-top">
                 <h3>{selectedSkill.name}</h3>
-                <span className="channel-tag ghost">双通道混合</span>
+                <span className="channel-tag ghost">{t.hybridTag}</span>
               </div>
               <p className="skill-desc">{selectedSkill.description}</p>
               <div className="skill-reqs">
-                <span style={{ fontSize: '11px', color: '#64748b' }}>受控应用白名单:</span>
+                <span style={{ fontSize: '11px', color: '#64748b' }}>{t.whitelist}</span>
                 {selectedSkill.requiredProcesses.map((proc) => (
                   <span key={proc} className="proc-badge">
                     {proc}
@@ -262,7 +335,7 @@ export default function WorkerStudio() {
           </div>
 
           <div style={{ marginTop: '10px' }}>
-            <h3 style={{ fontSize: '14px', margin: '0 0 8px', color: '#475569' }}>SOP 规划步骤:</h3>
+            <h3 style={{ fontSize: '14px', margin: '0 0 8px', color: '#475569' }}>{t.stepsTitle}</h3>
             <div className="subgoal-list">
               {selectedSkill.steps.map((step, idx) => {
                 const isActive = workerStatus === 'running' && currentStepIndex === idx;
@@ -282,7 +355,7 @@ export default function WorkerStudio() {
                     <div style={{ flex: 1 }}>
                       <strong>{step.name}</strong>
                       <div style={{ fontSize: '11px', color: '#64748b' }}>
-                        {step.targetProcess} · {step.channelPreference === 'fast' ? '⚡ Fast 快通道' : '👻 Ghost 硬件通道'}
+                        {step.targetProcess} · {step.channelPreference === 'fast' ? t.fastChannel : t.ghostChannel}
                       </div>
                     </div>
                   </div>
@@ -295,19 +368,19 @@ export default function WorkerStudio() {
         {/* 右侧：实时监控与运行指标 */}
         <div className="studio-card">
           <h2>
-            <TrendingUp size={18} /> 员工上班运行态 (Worker Live Dashboard)
+            <TrendingUp size={18} /> {t.dashboardTitle}
           </h2>
 
           <div className="progress-banner">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span>
-                当前状态:{' '}
+                {t.statusLabel}{' '}
                 <strong>
                   {workerStatus === 'running'
-                    ? '正在自主执行'
+                    ? t.statusRunning
                     : workerStatus === 'completed'
-                      ? '任务已圆满完成'
-                      : '就绪待命'}
+                      ? t.statusCompleted
+                      : t.statusIdle}
                 </strong>
               </span>
               <span>{progress}%</span>
@@ -317,17 +390,17 @@ export default function WorkerStudio() {
             </div>
             <div style={{ display: 'flex', gap: '16px', fontSize: '12px', marginTop: '4px' }}>
               <span className="stat-pill">
-                <Shield size={13} color="#dc2626" /> 硬件防封: 正常
+                <Shield size={13} color="#dc2626" /> {t.statAntiBan}
               </span>
               <span className="stat-pill">
-                <Zap size={13} color="#059669" /> 累计节省 Token: ~{savedTokens}
+                <Zap size={13} color="#059669" /> {t.statSavedTokens} ~{savedTokens}
               </span>
             </div>
           </div>
 
           <div>
             <h3 style={{ fontSize: '13px', margin: '0 0 6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <Terminal size={14} /> 实时运行日志 (Live Activity Log)
+              <Terminal size={14} /> {t.logTitle}
             </h3>
             <div className="log-terminal">
               {logs.map((line, idx) => (

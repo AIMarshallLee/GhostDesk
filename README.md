@@ -1,7 +1,7 @@
 # GhostDesk 👻🖥️⚡
 
-> **The Open-Source Hardware-in-the-Loop Desktop AI Employee Substrate for Windows & macOS**  
-> *攻壳机动队式软硬协同·物理级防封的桌面 AI 员工开源底座 (支持 Windows 与 macOS)*
+> **攻壳机动队式软硬协同·物理级防封的桌面 AI 员工开源底座 (支持 Windows 与 macOS)**  
+> *The Open-Source Hardware-in-the-Loop Desktop AI Employee Substrate for Windows & macOS*
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS-blue)](https://github.com/AIMarshallLee/GhostDesk)
@@ -11,154 +11,156 @@
 [![MCP](https://img.shields.io/badge/MCP-Model%20Context%20Protocol-purple)](https://modelcontextprotocol.io/)
 [![Python SDK](https://img.shields.io/badge/python-LangGraph%20%7C%20CrewAI-yellow)](sdk/python/)
 
-[English](README.md) | [中文说明](README_CN.md)
+**🇨🇳 简体中文** | [🇺🇸 English (英文版本)](README_EN.md)
 
 <p align="center">
-  <img src="docs/assets/worker-studio-preview.svg" alt="GhostDesk AI Worker Studio Preview" width="100%" />
+  <img src="docs/assets/worker-studio-preview.svg" alt="GhostDesk AI 员工工作台预览" width="100%" />
 </p>
 
 ---
 
-## 💡 What is GhostDesk? / 什么是 GhostDesk？
+## 💡 为什么需要 GhostDesk？
 
-Most modern Computer Use and RPA frameworks (such as PyAutoGUI, Windows UI Automation, and OS-level hooks) rely on **software input injection**. When automating sensitive enterprise applications (e.g. WeChat, DingTalk, Feishu, e-commerce admin panels, ERPs, and banking software), software hooks are detected within seconds by anti-bot and anti-fraud engines, leading to immediate account bans.
+目前主流的桌面自动化与 Computer Use 方案（如 PyAutoGUI、Windows UI Automation、系统级键盘鼠标模拟钩子），本质上全是**软件层面的 API 注入**。
 
-**GhostDesk** ("Ghost in the Machine for your Desktop") introduces an enterprise-grade **Hardware-in-the-Loop (HITL)** substrate:
+当企业尝试使用 AI 自动化操作敏感业务软件（如微信、企微、钉钉、千牛、电商后台、各类 ERP 与网银）时，此类软件注入行为会在几秒钟内被平台反作弊与风控系统捕获，**导致批量封号与封禁**。
 
-1. 🛡️ **Physical Hardware HID Emulation (RP2040 Pico)**: AI keystrokes and mouse movements are piped through an external hardware microchip running custom TinyUSB firmware. To Windows and target software, input appears as an authentic external USB keyboard and mouse. **Zero API hooks, zero anti-cheat detection.**
-2. ⚡ **Hybrid Fast/Ghost Channel Routing**:
-   - **Ghost Channel**: Pico USB HID + VLM OCR candidate typing for high-risk targets (WeChat, DingTalk, Pinduoduo).
-   - **Fast Channel**: Instant native typing & direct automation for safe productivity tools (Excel, Chrome, Notepad), cutting typing latency from 15s to 50ms and saving ~80% VLM tokens!
-3. 🔒 **100% Offline Local VLM Adapter (Qwen2.5-VL / Ollama)**: Zero data leakage. Run entirely offline on local enterprise GPUs using Ollama or vLLM with automated coordinate scaling.
-4. 🐍 **Official Python SDK (`ghostdesk`)**: Seamlessly connects to **LangGraph**, **CrewAI**, **AutoGen**, and LangChain with typed Pydantic models.
-5. 📑 **Markdown SOP Community Skill Hub**: Write enterprise automation procedures in human-readable Markdown SOPs. No code required. Built-in SOPs include *Feishu Leave Approval*, *Tax Invoice Batch Export*, *Xiaohongshu Lead Capture*, and *WeChat Order to Excel*.
-6. 🤖 **Autonomous Worker Studio & Self-Healing Watchdog**: Visual React dashboard for monitoring workers, token savings metrics, interval/file-watcher autonomous triggers, and automatic `ESC` self-healing on modal blockage.
-7. 🔌 **Model Context Protocol (MCP) Server**: Standard MCP tool endpoints for Claude Desktop, Cursor, and any external agent orchestrator.
+**GhostDesk（意为“驻留在桌面硬件躯壳中的 AI 幽灵”）从底层采用了完全不同的真实生产级解法：**
+
+1. 🛡️ **物理级硬件 HID 仿真（树莓派 Pico RP2040）**：AI 的鼠标移动与按键通过外接硬件芯片（运行定制 TinyUSB 固件）下发。在 Windows 与目标软件看来，这就是一个完全合法的外部物理键盘与鼠标。**零软件注入钩子，平台风控 100% 无法探查。**
+2. ⚡ **快慢双通道混合执行（Hybrid Execution）**：
+   - **Ghost 慢通道**：高风控软件（微信、企微、电商）强制走 Pico 物理防封击键 + 视觉感知全拼打字。
+   - **Fast 快通道**：低风控办公软件（Excel、Chrome、记事本）启用高速原生无损输入，打字延迟从 15 秒缩短至 50 毫秒，节省约 80% VLM Token！
+3. 🔒 **100% 离线私有化视觉模型适配（Qwen2.5-VL / Ollama）**：支持本地离线运行 Qwen2.5-VL，内置 0-1000 归一化坐标转换与指令解析。数据不出内网，彻底解决企业隐私与安全合规痛点。
+4. 🐍 **官方 Python SDK (`ghostdesk`)**：原生支持 **LangGraph**、**CrewAI**、**AutoGen** 与 LangChain 智能体，提供完整强类型 Pydantic 模型与即开即用示例。
+5. 📑 **Markdown SOP 社区技能工坊（Skill Hub）**：无需写代码，用 Markdown 格式即可定义多软件联动工作流！内置《飞书审批自动流转》、《增值税发票批量导出》、《小红书意向线索归档》、《微信订单自动同步 Excel》等开箱即用 SOP。
+6. 🤖 **AI 员工工作台（Worker Studio）与自愈看门狗**：可视化 React 仪表盘，支持实时进度监控、Token 节省统计、定时轮询与文件监听触发器，以及遭遇意外弹窗阻挡时的 `ESC` 自动自愈。
+7. 🔌 **标准 MCP 工具服务（Model Context Protocol）**：内置 `ghostdesk_act`、`ghostdesk_switch_focus`、`ghostdesk_list_workspace_windows` 等标准工具，供 Claude Desktop、Cursor 及外部任意大模型 Agent 直接调用。
 
 ---
 
-## 🏗️ Architecture / 核心架构
+## 🏗️ 系统架构
 
 ```mermaid
 graph TD
-    subgraph Agent_Ecosystem ["Agent Orchestration & Frameworks"]
-        PY["Official Python SDK (LangGraph / CrewAI)"]
-        MCP_CLIENT["MCP Clients (Claude Desktop / Cursor)"]
-        STUDIO["GhostDesk Worker Studio (React UI)"]
+    subgraph Agent生态与调度 ["智能体生态与调度层"]
+        PY["官方 Python SDK (LangGraph / CrewAI)"]
+        MCP_CLIENT["MCP 客户端 (Claude Desktop / Cursor)"]
+        STUDIO["GhostDesk AI 员工工作台 (React UI)"]
     end
 
-    subgraph Vision_Brains ["Vision & LLM Intelligence"]
+    subgraph 视觉与模型引擎 ["视觉与多模态模型层"]
         GEMINI["Google Gemini Interactions API"]
-        UITARS["ByteDance UI-TARS 1.5 / Doubao"]
-        LOCAL_VLM["Offline Local VLM (Qwen2.5-VL via Ollama)"]
+        UITARS["字节跳动 UI-TARS 1.5 / 豆包"]
+        LOCAL_VLM["离线私有化模型 (Qwen2.5-VL via Ollama)"]
     end
 
-    subgraph Core_Substrate ["GhostDesk Desktop Substrate (Electron + Node.js)"]
-        WM["Multi-Window Workspace & Focus Guard"]
-        PR{"Hybrid Policy Router"}
-        PLANNER["Goal-Driven Subgoal Planner"]
-        WATCHDOG["Autonomous Watchdog & Trigger Engine"]
-        SKILL_HUB["Markdown Skill Hub & SOP Engine"]
-        MCP_SERVER["Model Context Protocol (MCP) Server"]
+    subgraph 桌面执行底座 ["GhostDesk 桌面底座 (Electron + Node.js)"]
+        WM["多窗口工作空间白名单与切窗守卫"]
+        PR{"混合策略路由器 (Hybrid Policy Router)"}
+        PLANNER["目标驱动子目标规划器 (Goal Planner)"]
+        WATCHDOG["后台看门狗与自动触发器引擎"]
+        SKILL_HUB["Markdown 技能工坊与 SOP 解析器"]
+        MCP_SERVER["MCP 服务端 (Model Context Protocol)"]
     end
 
-    subgraph Execution_Channels ["Dual Execution Channels"]
-        PICO["Ghost Channel: Pico RP2040 Hardware USB HID (Zero-Ban)"]
-        FAST["Fast Channel: High-Speed Native Driver (50ms)"]
+    subgraph 双执行通道 ["双执行通道"]
+        PICO["Ghost 慢通道: Pico RP2040 硬件 USB HID (物理防封)"]
+        FAST["Fast 快通道: 高速原生无损驱动 (50ms 瞬时填入)"]
     end
 
-    subgraph Target_OS ["Windows 11 Target Workspace"]
-        SENSITIVE["High-Risk Apps (WeChat / DingTalk / E-Commerce)"]
-        OFFICE["Safe Apps (Excel / Chrome / Local ERP / Notepad)"]
+    subgraph 操作系统与目标应用 ["Windows 11 宿主环境"]
+        SENSITIVE["高风控应用 (微信 / 钉钉 / 电商后台)"]
+        OFFICE["低风控应用 (Excel / Chrome / 本地 ERP / 记事本)"]
     end
 
-    Agent_Ecosystem <--> Core_Substrate
-    Vision_Brains <--> Core_Substrate
-    Core_Substrate --> PR
-    PR -->|"High-Risk Policy"| PICO
-    PR -->|"Safe Office Policy"| FAST
+    Agent生态与调度 <--> 桌面执行底座
+    视觉与模型引擎 <--> 桌面执行底座
+    桌面执行底座 --> PR
+    PR -->|"高风控策略"| PICO
+    PR -->|"办公高吞吐策略"| FAST
     PICO --> SENSITIVE
     FAST --> OFFICE
 ```
 
 ---
 
-## ⚡ Quick Start / 快速上手
+## ⚡ 快速上手
 
-### 1. Prerequisites
-- **OS**: Windows 11 x64
-- **Node.js**: v20+ / npm v10+
-- **Python (Optional for SDK)**: Python 3.10+
-- *(Optional for Hardware Mode)*: Raspberry Pi Pico 1 (RP2040) board + Micro-USB cable (~$3-4)
+### 1. 环境准备
+- 操作系统：Windows 11 x64
+- 运行时：Node.js v20+ / npm v10+
+- Python（可选，用于运行 Python SDK）：Python 3.10+
+- *(可选硬件)*：树莓派 Pico 1（RP2040 核心板，淘宝约 15~20 元）+ Micro-USB 数据线
 
-### 2. Installation
+### 2. 安装与运行测试
 ```powershell
-# Clone the repository
+# 克隆仓库
 git clone https://github.com/AIMarshallLee/GhostDesk.git
 cd GhostDesk
 
-# Install dependencies
+# 安装依赖
 npm ci
 
-# Run test suite (43+ substrate unit tests)
+# 运行自动化测试套件 (43+ 底座单元测试)
 npm test
 ```
 
-### 3. Launching
-- **Worker Studio (Desktop App)**:
+### 3. 启动底座
+- **AI 员工工作台 (桌面客户端)**：
   ```powershell
   npm run desktop
   ```
-- **Developer Software-Only Mode (No Hardware Needed)**:
+- **纯软件免硬件开发者模式**：
   ```powershell
   $env:FLOWDESK_DEV_MODE="1"; npm run desktop
   ```
-- **Local MCP Server**:
+- **启动标准 MCP 服务**：
   ```powershell
   npx tsx desktop/mcp-server.ts
   ```
 
 ---
 
-## 🐍 Python SDK Quickstart (LangGraph & CrewAI)
+## 🐍 Python SDK 快速接入 (LangGraph & CrewAI)
 
-Install and run the Python SDK:
+安装 Python SDK：
 ```powershell
 cd sdk/python
 pip install -e .
 ```
 
-### Basic Usage
+### 基础调用示例
 ```python
 from ghostdesk import GhostClient, WindowTarget
 
 client = GhostClient(base_url="http://127.0.0.1:4318")
 
-# 1. High-risk app: Automatically routed to Pico USB Hardware HID
+# 1. 高风控软件：自动路由至 Pico 硬件 USB HID 键鼠通道，零封号风险
 res = client.execute_action(process="wechat.exe", kind="type_text", text="订单已发货！")
-print(f"Executed via: {res.channel}")  # -> 'ghost'
+print(f"执行通道: {res.channel}")  # -> 'ghost'
 
-# 2. Safe app: Routed to Fast Channel (50ms native speed)
+# 2. 安全办公软件：自动路由至 Fast 极速通道 (50ms 原生无损填入)
 res = client.execute_action(process="excel.exe", kind="click", x=120.0, y=85.0)
-print(f"Executed via: {res.channel}")  # -> 'fast'
+print(f"执行通道: {res.channel}")  # -> 'fast'
 
-# 3. Autonomous SOP Skill execution
+# 3. 调度端到端 SOP 技能
 res = client.dispatch_skill(
     skill_id="skill_order_to_excel",
     target_windows=[
-        WindowTarget(hwnd="0x001A", process="wechat.exe", title="WeChat"),
-        WindowTarget(hwnd="0x002B", process="excel.exe", title="OrderSheet.xlsx"),
+        WindowTarget(hwnd="0x001A", process="wechat.exe", title="微信"),
+        WindowTarget(hwnd="0x002B", process="excel.exe", title="订单汇总.xlsx"),
     ]
 )
 ```
 
-See [sdk/python/examples/](sdk/python/examples/) for complete **LangGraph** and **CrewAI** worker integration scripts.
+查看 [sdk/python/examples/](sdk/python/examples/) 获取完整的 **LangGraph** 与 **CrewAI** 自动化智能体集成代码。
 
 ---
 
-## 📑 Markdown SOP Skill Hub
+## 📑 Markdown 社区技能工坊 (Skill Hub)
 
-Create enterprise skills in plain Markdown without programming:
+无需编写任何底层代码，只需写一份标准的 Markdown SOP 即可被底座直接加载调度：
 
 ```markdown
 ---
@@ -180,54 +182,54 @@ processes: [chrome.exe, excel.exe]
 - Expect: 文件下载完成
 ```
 
-Save to `skills/` directory and GhostDesk will automatically discover and register the skill.
+将文件放入 `skills/` 目录，GhostDesk 会自动发现、校验并注册到可用技能列表中。
 
 ---
 
-## 🔌 Hardware Setup (30-Second Flashing) / 硬件烧录
+## 🔌 硬件极速烧录 (30 秒搞定)
 
-GhostDesk supports two reliable hardware execution options:
+GhostDesk 支持两种高可靠硬件方案：
 
-### Option A: Ultra-Low Cost — Raspberry Pi Pico 1 (RP2040, ~$2)
-1. Hold down the **BOOTSEL** button on your Pico and plug it into your computer via USB.
-2. A mass storage drive named `RPI-RP2` will appear.
-3. Drag and drop `firmware/release/flowdesk_usb_bridge.uf2` onto the `RPI-RP2` drive.
-4. The Pico will reboot automatically as an authentic USB HID controller.
+### 方案 A：极简高性价比方案 —— 树莓派 Pico 1 (RP2040，约 15~20 元)
+1. 按住 Pico 板上的白色 **BOOTSEL** 按键，插上 USB 数据线连接电脑。
+2. 电脑会自动弹出一个名为 `RPI-RP2` 的可移动磁盘。
+3. 将本项目下的 `firmware/release/flowdesk_usb_bridge.uf2` 文件直接拖拽粘贴进该磁盘。
+4. Pico 自动重启，瞬间变身为合法的标准外部硬件 HID 键盘鼠标！
 
-### Option B: Interactive Smart Touch Terminal — M5Stack CoreS3 (ESP32-S3)
-> Features a 2.0" IPS touch screen, audio alarms, and a **Physical Emergency Kill-Switch**!
-1. **Web Browser 1-Click Flasher**: Open [firmware/m5stack_cores3/web_flasher.html](firmware/m5stack_cores3/web_flasher.html) in Chrome or Edge, connect CoreS3 via USB-C, and flash with one click.
-2. **From Source**: Compile and upload via VS Code + PlatformIO or Arduino IDE (see [firmware/m5stack_cores3/README.md](firmware/m5stack_cores3/README.md)).
-3. Once booted, the CoreS3 screen visualizes real-time AI action logs, heartbeat lease status, and an interactive red Emergency Stop button.
+### 方案 B：高端全彩触控带屏方案 —— M5Stack CoreS3 (ESP32-S3)
+> 拥有 2.0 寸全彩触控屏、声音报警与**物理急停按钮 (Kill Switch)**，AI 暴走误操作一触即停！
+1. **浏览器一键烧录 (Web Flasher)**：使用 Chrome / Edge 浏览器打开 [firmware/m5stack_cores3/web_flasher.html](firmware/m5stack_cores3/web_flasher.html)，插上 CoreS3 点击“安装固件”即可秒级完成烧录。
+2. **源码编译烧录**：支持 VS Code + PlatformIO / Arduino IDE 一键编译烧录（详见 [firmware/m5stack_cores3/README.md](firmware/m5stack_cores3/README.md)）。
+3. 烧录完成后，CoreS3 屏幕将实时显示 AI 动作日志、心跳租约以及底部物理急停大红钮。
 
-Once connected, open **USB Hardware** in the GhostDesk Desktop app to automatically pair.
-
----
-
-## 🗺️ Roadmap: Growing into an AI Employee Substrate
-
-- [x] **v0.8.0 (Substrate Milestone 1)**:
-  - **Hybrid Execution Engine**: Fast Path (50ms typing) + Ghost Path (Pico hardware anti-ban)
-  - **Multi-Window Workspace Scope**: Focus switching with HWND whitelist validation
-  - **Model Context Protocol (MCP) Server**: Standard tool interface for agentic control
-- [x] **v0.9.0 (Substrate Milestone 2)**:
-  - **Goal-Driven Task Planner**: Sub-goal decomposition and progress tracking
-  - **Visual Self-Reflection Engine**: Stuck detection and automatic `ESC` self-healing
-  - **Modular Skill Ecosystem**: `SkillRegistry` with built-in benchmark SOPs
-- [x] **v1.0.0 (The Moat Milestone - Released!)**:
-  - **Worker Studio UI**: Visual dashboard with live progress and token savings tracker
-  - **Autonomous Triggers & Watchdog**: Interval/file-watcher autonomous workers
-  - **Official Python SDK**: LangGraph and CrewAI first-class adapters
-  - **Local Offline VLM Adapter**: 100% private Qwen2.5-VL via Ollama
-  - **Markdown Community Skill Hub**: Human-readable SOP execution
-- [ ] **v1.1.0 (Enterprise Fleet Cluster)**:
-  - Multi-dongle USB hub support for parallel desktop AI worker pods
+设备连接后，在 GhostDesk 客户端中打开 **USB 硬件控制**，设备即可秒级自动连接识别。
 
 ---
 
-## 🤝 Contributing & License
+## 🗺️ 演进路线图
 
-Contributions are welcome! Please feel free to submit issues and pull requests.
+- [x] **v0.8.0 (底座里程碑 1)**:
+  - **快慢双通道混合执行引擎**: Fast 极速通道 (50ms) + Ghost 硬件防封慢通道
+  - **多窗口工作空间白名单守卫**: HWND 范围受控切窗与异常熔断
+  - **标准 MCP 服务端**: 对接外部各种 Agent 调用的标准化工具集
+- [x] **v0.9.0 (底座里程碑 2)**:
+  - **目标驱动子任务规划器**: 步骤拆解与完成进度百分比追踪
+  - **视觉自我反思引擎**: 动作前后状态核验与画面死锁检测
+  - **全自动自愈机制**: 阻挡弹窗自动触发 `ESC` 中立态恢复
+- [x] **v1.0.0 (护城河全量发布 - 已完成)**:
+  - **AI 员工工作台 (Worker Studio UI)**: 任务派发与 Token 节省可视化大盘
+  - **无人值守自动化看门狗与触发器**: 定时轮询与文件夹变动自动派工
+  - **官方 Python SDK**: 原生支持 LangGraph 与 CrewAI 多智能体系统
+  - **本地离线私有化 VLM 适配**: 零数据出境的 Qwen2.5-VL 离线视觉模型
+  - **Markdown 社区技能工坊**: 人人可编的标准化 SOP 解析与执行底座
+- [ ] **v1.1.0 (多机硬件集群调度)**:
+  - 多口 USB Hub 阵列支持，单宿主机多 Dongle 并行多任务派发
 
-This project is licensed under the **Apache License 2.0** - see the [LICENSE](LICENSE) file for details.  
-Firmware includes TinyUSB components subject to MIT/BSD licensing (see `firmware/licenses`).
+---
+
+## 🤝 贡献与开源协议
+
+欢迎社区提交 Issue 与 Pull Request！
+
+本项目采用 **Apache License 2.0** 开源协议 - 详见 [LICENSE](LICENSE) 文件。  
+固件部分基于 TinyUSB 实现，遵循 MIT/BSD 协议（详见 `firmware/licenses`）。

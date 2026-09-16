@@ -128,9 +128,11 @@ GhostDesk uses the standard **Raspberry Pi Pico 1 (RP2040)**:
   - **Hybrid Execution Engine**: Fast Path (50ms typing) + Ghost Path (Pico hardware anti-ban)
   - **Multi-Window Workspace Scope**: Focus switching with HWND whitelist validation
   - **Model Context Protocol (MCP) Server**: Standard tool interface for agentic control
-- [ ] **v0.9.0 (Agent Skill Ecosystem)**:
-  - Modular skill directory (Excel, browser multi-tab, invoice parsing, ERP entry)
-  - Long-horizon planning & self-reflection engine
+- [x] **v0.9.0 (Substrate Milestone 2 - Live Now!)**:
+  - **Goal-Driven Task Planner**: Sub-goal decomposition, step advancing, and progress percentage tracking
+  - **Visual Self-Reflection Engine**: Pre/post action screen state verification and stuck detection
+  - **Self-Healing Recovery**: Automatic `ESC` / neutral recovery action dispatching on modal blocking
+  - **Modular Skill Ecosystem**: `SkillRegistry` with built-in `order_to_excel` benchmark cross-app SOP
 - [ ] **v1.0.0 (Enterprise Multi-Agent Cluster)**:
   - Local multi-device dispatching console for managing fleets of hardware-dongle AI workers
 

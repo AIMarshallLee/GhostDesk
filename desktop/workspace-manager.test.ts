@@ -1,0 +1,90 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { MultiWindowWorkspace, type WindowIdentity } from './workspace-manager';
+
+const winA: WindowIdentity = {
+  hwnd: '1001',
+  pid: 1234,
+  process: 'wechat.exe',
+  title: '微信',
+  width: 800,
+  height: 600,
+};
+
+const winB: WindowIdentity = {
+  hwnd: '1002',
+  pid: 5678,
+  process: 'excel.exe',
+  title: '2026采购订单.xlsx - Excel',
+  width: 1200,
+  height: 800,
+};
+
+const winC: WindowIdentity = {
+  hwnd: '1003',
+  pid: 9999,
+  process: 'chrome.exe',
+  title: '企业管理后台 - Google Chrome',
+  width: 1024,
+  height: 768,
+};
+
+test('multi-window workspace manages scope and initial active window', () => {
+  const ws = new MultiWindowWorkspace([winA, winB]);
+  assert.equal(ws.listWindows().length, 2);
+  assert.equal(ws.getActiveWindow()?.hwnd, '1001');
+  assert.equal(ws.isInScope('1001'), true);
+  assert.equal(ws.isInScope('1002'), true);
+  assert.equal(ws.isInScope('9999'), false);
+});
+
+test('multi-window workspace allows switching between whitelisted windows', () => {
+  const ws = new MultiWindowWorkspace([winA, winB, winC]);
+  assert.equal(ws.getActiveWindow()?.hwnd, '1001');
+
+  const switched = ws.switchFocus('1002');
+  assert.equal(switched.hwnd, '1002');
+  assert.equal(ws.getActiveWindow()?.hwnd, '1002');
+  assert.equal(ws.getActiveWindow()?.process, 'excel.exe');
+
+  ws.switchFocus('1003');
+  assert.equal(ws.getActiveWindow()?.hwnd, '1003');
+  assert.equal(ws.getActiveWindow()?.process, 'chrome.exe');
+});
+
+test('switching to an unauthorized window throws security violation', () => {
+  const ws = new MultiWindowWorkspace([winA, winB]);
+  assert.throws(
+    () => ws.switchFocus('9999'),
+    /Workspace Security Violation: HWND 9999 is not in the authorized workspace scope/,
+  );
+  // Active window remains unchanged
+  assert.equal(ws.getActiveWindow()?.hwnd, '1001');
+});
+
+test('validateForeground accepts allowed window and rejects unauthorized window', () => {
+  const ws = new MultiWindowWorkspace([winA, winB]);
+  // In scope
+  assert.doesNotThrow(() => ws.validateForeground('1001', '微信'));
+  assert.doesNotThrow(() => ws.validateForeground('1002', 'Excel'));
+
+  // Unknown window / popup outside scope
+  assert.throws(
+    () => ws.validateForeground('8888', '恶意外挂/未知弹窗'),
+    /Workspace Fail-Closed: Foreground window \(8888\) is outside the AI employee workspace scope/,
+  );
+});
+
+test('adding and removing windows updates scope dynamically', () => {
+  const ws = new MultiWindowWorkspace([winA]);
+  assert.equal(ws.listWindows().length, 1);
+
+  ws.addWindow(winB);
+  assert.equal(ws.listWindows().length, 2);
+  assert.equal(ws.isInScope('1002'), true);
+
+  ws.removeWindow('1001');
+  assert.equal(ws.listWindows().length, 1);
+  assert.equal(ws.isInScope('1001'), false);
+  assert.equal(ws.getActiveWindow()?.hwnd, '1002');
+});

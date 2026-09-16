@@ -19,13 +19,14 @@ Most modern Computer Use and RPA frameworks (e.g., PyAutoGUI, Windows Accessibil
 **GhostDesk** ("Ghost in the Machine for your Desktop") introduces a production-grade **Hardware-in-the-Loop (HITL)** architecture:
 1. **Physical Hardware HID Emulation (RP2040 Pico)**: The AI controls a dedicated Raspberry Pi Pico hardware dongle running custom TinyUSB firmware. To Windows and target software, input appears as an authentic physical USB keyboard and mouse.
 2. **Vision-Driven IME Chinese Typing**: Converts text to full pinyin, simulates individual ASCII keystrokes, and visually OCRs/reads the IME candidate popups in real-time. **Zero clipboard hijacking, zero `Ctrl+V` signatures**.
-3. **Dual Vision Computer Use Engines**:
+3. **Hybrid Execution (Fast Path + Ghost Path)**:
+   - **Ghost Channel**: Physical Pico USB + VLM OCR candidate typing for high-risk targets (WeChat, DingTalk, Pinduoduo).
+   - **Fast Channel**: Instant native typing & direct automation for low-risk office tools (Excel, Chrome, Notepad), cutting typing latency from 15s to 50ms and saving ~80% VLM tokens!
+4. **Multi-Window Workspace Guard**: Allows switching between an authorized whitelist of application windows (e.g. WeChat + Chrome + Excel) while fail-closing on unexpected popups.
+5. **Model Context Protocol (MCP) Server**: Exposes standard MCP tools (`ghostdesk_act`, `ghostdesk_list_workspace_windows`, `ghostdesk_switch_focus`) for external Agent orchestration.
+6. **Dual Vision Computer Use Engines**:
    - Native **Google Gemini Interactions** desktop Computer Use.
    - Open-source **ByteDance UI-TARS 1.5** / Doubao model support.
-4. **Fail-Closed Security & Window Verification**: Strict window identity checking (`HWND`, `PID`, process creation timestamp, window title, dimensions) prevents mis-clicking when windows switch. Human-in-the-loop (HITL) review and local-first privacy (keys encrypted via Windows `safeStorage`).
-5. **Dual Execution Modes**:
-   - **Hardware Mode (Production/Anti-Ban)**: Full hardware-in-the-loop via Pico USB.
-   - **Dev Mode (Software-Only)**: Zero hardware required; allows any developer to clone and test instantly with `FLOWDESK_DEV_MODE=1`.
 
 ---
 
@@ -36,32 +37,34 @@ graph TD
     subgraph AI_Brains ["AI Models & Vision Engines"]
         M1["Google Gemini Interactions API"]
         M2["ByteDance UI-TARS 1.5 / Doubao"]
-        M3["OpenAI-Compatible Vision Models"]
+        M3["External Agent via MCP Protocol"]
     end
 
     subgraph Core_Desktop ["GhostDesk Desktop Substrate (Electron + Node.js)"]
-        GW["Window Guard & HWND Validator"]
-        VLM["Vision Observation & Screenshot Loop"]
+        WM["Multi-Window Workspace & Focus Guard"]
+        PR{"Hybrid Policy Router"}
+        VLM["Vision Observation Loop"]
         IME["Pinyin-pro + IME Visual Candidate Reader"]
-        SEC["safeStorage / Fail-Closed Audit Trail"]
+        MCP["Model Context Protocol (MCP) Server"]
     end
 
-    subgraph Hardware_Layer ["Physical Hardware Interface"]
-        PICO["Raspberry Pi Pico (RP2040)"]
-        USB_HID["TinyUSB Physical Keyboard / Mouse Protocol"]
+    subgraph Execution_Channels ["Execution Channels"]
+        PICO["Ghost Channel: Pico RP2040 Hardware USB HID"]
+        FAST["Fast Channel: High-Speed Native Driver (50ms)"]
     end
 
     subgraph Target_OS ["Windows 11 Target Workspace"]
-        APPS["Target Software (WeChat / Browser / ERP / Excel)"]
+        SENSITIVE["High-Risk Apps (WeChat / DingTalk / E-Commerce)"]
+        OFFICE["Safe Apps (Excel / Chrome / Local ERP / Notepad)"]
     end
 
-    AI_Brains <--> VLM
-    VLM --> GW
-    GW --> IME
-    IME --> PICO
-    PICO --> USB_HID
-    USB_HID --> APPS
-    APPS -.->|"PrintWindow / Screenshot"| VLM
+    AI_Brains <--> MCP
+    MCP --> WM
+    WM --> PR
+    PR -->|"High-Risk Policy"| PICO
+    PR -->|"Safe Office Policy"| FAST
+    PICO --> SENSITIVE
+    FAST --> OFFICE
 ```
 
 ---
@@ -76,13 +79,13 @@ graph TD
 ### 2. Installation
 ```powershell
 # Clone the repository
-git clone https://github.com/<your-username>/GhostDesk.git
+git clone https://github.com/AIMarshallLee/GhostDesk.git
 cd GhostDesk
 
 # Install dependencies
 npm ci
 
-# Run test suite (210+ comprehensive tests)
+# Run test suite (230+ comprehensive tests)
 npm test
 ```
 
@@ -116,16 +119,15 @@ GhostDesk uses the standard **Raspberry Pi Pico 1 (RP2040)**:
 
 ## 🗺️ Roadmap: Growing into an AI Employee Substrate
 
-- [x] **v0.7.0 (Current)**:
+- [x] **v0.7.0 (Current Baseline)**:
   - Gemini Native Interactions Computer Use
   - UI-TARS 1.5 single-task operator
   - Raspberry Pi Pico USB HID protocol 4
   - Vision IME Chinese full-pinyin typing
-  - Multi-session desktop listening & auto-reply sandbox
-- [ ] **v0.8.0 (General Task Protocol & MCP)**:
-  - Universal CLI / Webhook task dispatching (beyond chat windows)
-  - Model Context Protocol (MCP) server & client integration
-  - Mixed-mode execution (Windows UIA fast-path + Hardware HID fallback)
+- [x] **v0.8.0 (Substrate Milestone 1 - Live Now!)**:
+  - **Hybrid Execution Engine**: Fast Path (50ms typing) + Ghost Path (Pico hardware anti-ban)
+  - **Multi-Window Workspace Scope**: Focus switching with HWND whitelist validation
+  - **Model Context Protocol (MCP) Server**: Standard tool interface for agentic control
 - [ ] **v0.9.0 (Agent Skill Ecosystem)**:
   - Modular skill directory (Excel, browser multi-tab, invoice parsing, ERP entry)
   - Long-horizon planning & self-reflection engine

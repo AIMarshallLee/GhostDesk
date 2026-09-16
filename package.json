@@ -1,7 +1,7 @@
 {
   "name": "ghostdesk",
-  "version": "0.7.0",
-  "description": "GhostDesk: Hardware-in-the-Loop Desktop AI Employee Substrate",
+  "version": "0.8.0",
+  "description": "GhostDesk: The Open-Source Hardware-in-the-Loop Desktop AI Employee Substrate",
   "type": "module",
   "main": "desktop-build/main.cjs",
   "scripts": {

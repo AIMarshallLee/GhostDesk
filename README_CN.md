@@ -20,14 +20,15 @@
 
 **GhostDesk（意为“驻留在桌面硬件躯壳中的 AI 幽灵”）从底层采用了完全不同的真实生产级解法：**
 1. **物理级硬件 HID 仿真（树莓派 Pico RP2040）**：AI 的鼠标移动与按键通过外接硬件芯片（运行定制 TinyUSB 固件）下发。在 Windows 与目标软件看来，这就是一个完全合法的外部物理键盘与鼠标。
-2. **视觉感知驱动的输入法全拼打字**：中文不走剪贴板、不产生 `Ctrl+V` 特征，而是由 `pinyin-pro` 将中文转为全拼 ASCII 击键下发，同时配合视觉模型毫秒级读取输入法候选框并按下数字选词。
-3. **双前沿视觉 Computer Use 引擎**：
+2. **视觉感知驱动的输入法全拼打字**：中文不走剪贴板、不产生 `Ctrl+V` 特征，由 `pinyin-pro` 将中文转为全拼 ASCII 击键下发，同时配合视觉模型毫秒级读取输入法候选框并按下数字选词。
+3. **快慢双通道混合执行（Hybrid Execution）**：
+   - **Ghost 慢通道**：高风控软件（微信、企微、电商）强制走 Pico 物理防封击键。
+   - **Fast 快通道**：低风控办公软件（Excel、Chrome、记事本）启用高速原生无损输入，打字延迟从 15 秒缩短至 50 毫秒，节省约 80% VLM Token！
+4. **受控多窗口工作空间（Multi-Window Workspace）**：打破单窗口死锁，支持 AI 员工在授权的白名单窗口集合（如微信 + Chrome + Excel）间安全切窗协同，未知弹窗立即熔断。
+5. **标准 MCP 工具服务（Model Context Protocol）**：内置 `ghostdesk_act`、`ghostdesk_switch_focus`、`ghostdesk_list_workspace_windows` 等标准工具，供外部各种大模型 Agent 直接调度。
+6. **双前沿视觉 Computer Use 引擎**：
    - 官方原生 **Google Gemini Interactions** 桌面端操作协议。
    - 国内与开源前沿 **字节跳动 UI-TARS 1.5** / 豆包 Computer Use 模型。
-4. **银行级 Fail-Closed 安全边界与窗口核验**：严格校验目标窗口的 `HWND`、`PID`、进程启动时间与标题尺寸，杜绝切窗误触；人机在环（HITL）审核与审核撤销机制，API 密钥由 Windows `safeStorage` 硬件隔离保护。
-5. **双执行模式解耦**：
-   - **生产/防封模式（Pico USB HID）**：硬件在环物理执行，用于真实业务场景。
-   - **开发者模式（纯软件运行）**：无需任何硬件，设置 `FLOWDESK_DEV_MODE=1` 即可快速本地开发与调试。
 
 ---
 
@@ -35,35 +36,37 @@
 
 ```mermaid
 graph TD
-    subgraph AI大脑与视觉引擎 ["AI 视觉与动作模型"]
+    subgraph AI大脑与智能调度 ["AI 智能体与模型层"]
         M1["Google Gemini Interactions API"]
         M2["字节跳动 UI-TARS 1.5 / 豆包"]
-        M3["通用 OpenAI 兼容视觉端点"]
+        M3["外部 Agent (通过标准 MCP 协议调度)"]
     end
 
     subgraph 桌面执行底座 ["GhostDesk 桌面底座 (Electron + Node.js)"]
-        GW["窗口守卫与 HWND 强校验"]
+        WM["多窗口工作空间白名单与切窗守卫"]
+        PR{"混合策略路由器 (Hybrid Policy Router)"}
         VLM["视觉截屏与闭环调度循环"]
         IME["全拼分词 + 候选窗视觉转写"]
-        SEC["安全存储 safeStorage / 审计日志"]
+        MCP["MCP 服务端 (Model Context Protocol)"]
     end
 
-    subgraph 硬件层 ["物理外设层 (外部硬件)"]
-        PICO["树莓派 Pico (RP2040 开发板)"]
-        USB_HID["TinyUSB 物理键鼠协议"]
+    subgraph 双执行通道 ["双执行通道"]
+        PICO["Ghost 慢通道: Pico RP2040 硬件 USB HID (物理防封)"]
+        FAST["Fast 快通道: 高速原生无损驱动 (50ms 瞬时填入)"]
     end
 
     subgraph 操作系统与目标应用 ["Windows 11 宿主环境"]
-        APPS["目标业务软件 (微信 / 浏览器 / ERP / Excel)"]
+        SENSITIVE["高风控应用 (微信 / 钉钉 / 电商后台)"]
+        OFFICE["低风控应用 (Excel / Chrome / 本地 ERP / 记事本)"]
     end
 
-    AI大脑与视觉引擎 <--> VLM
-    VLM --> GW
-    GW --> IME
-    IME --> PICO
-    PICO --> USB_HID
-    USB_HID --> APPS
-    APPS -.->|"PrintWindow 窗口捕获"| VLM
+    AI大脑与智能调度 <--> MCP
+    MCP --> WM
+    WM --> PR
+    PR -->|"高风控策略"| PICO
+    PR -->|"办公高吞吐策略"| FAST
+    PICO --> SENSITIVE
+    FAST --> OFFICE
 ```
 
 ---
@@ -78,13 +81,13 @@ graph TD
 ### 2. 获取代码与依赖安装
 ```powershell
 # 克隆仓库
-git clone https://github.com/<your-username>/GhostDesk.git
+git clone https://github.com/AIMarshallLee/GhostDesk.git
 cd GhostDesk
 
 # 安装依赖
 npm ci
 
-# 执行全套自动化单元测试（210+ 测试项）
+# 执行全套自动化单元测试（230+ 测试项）
 npm test
 ```
 
@@ -116,20 +119,19 @@ GhostDesk 采用极其普及的 **树莓派 Pico 1 (RP2040)**：
 
 ---
 
-## 🗺️ 演进路线图：从客服助手到全能 AI 员工底座
+## 🗺️ 演进路线图：向全能 AI 员工底座全面迈进
 
-- [x] **v0.7.0 (当前版本)**：
+- [x] **v0.7.0 (核心基线)**：
   - Gemini 原生 Interactions Computer Use 支持
   - UI-TARS 1.5 单任务视觉规划与操作
   - 树莓派 Pico USB HID 协议 4 与心跳看门狗
   - 中文视觉输入法全拼逐键打字
-  - 桌面多会话持续监听与沙箱自动回复实验
-- [ ] **v0.8.0 (通用任务协议与 MCP 接入)**：
-  - 开放通用 CLI / Webhook 任务分发（突破聊天窗口限制，支持任意工作流）
-  - 深度集成 Model Context Protocol (MCP) 客户端与工具集
-  - 混合执行模式（非敏感应用走 Windows UIA 高速通道，敏感应用走硬件 HID）
-- [ ] **v0.9.0 (数字员工技能生态)**：
-  - 模块化技能系统（Excel 批量填报、跨系统订单录入、发票报销、网银查账）
+- [x] **v0.8.0 (底座第一里程碑 - 现已落地！)**：
+  - **快慢双通道混合执行引擎**：Fast 通道（50ms 瞬时打字）+ Ghost 通道（Pico 硬件防封）
+  - **受控多窗口工作空间管理器**：白名单 HWND 校验与安全切窗守卫
+  - **Model Context Protocol (MCP) 服务端**：提供跨 Agent 调度的标准工具接口
+- [ ] **v0.9.0 (数字员工技能生态与规划器)**：
+  - 模块化技能系统（Excel 批量核对、发票开具、多标签浏览器抓取、ERP 跨系统录入）
   - 长周期目标规划与反思纠错状态机（Self-Reflection Engine）
 - [ ] **v1.0.0 (企业级分布式员工集群)**：
   - 支持单台管理服务器统筹多台插着硬件狗的“AI 员工工控机”集中调度看板

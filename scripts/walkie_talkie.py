@@ -18,14 +18,20 @@ import sys
 import time
 import wave
 
-# 自动补全必要轻量库
-for mod in ["serial", "speech_recognition", "pyperclip", "pyautogui"]:
+# 自动补全必要轻量库 (模块名 -> pip 包名映射，防止误装废弃的 serial 包)
+REQUIRED_PACKAGES = {
+    "serial": "pyserial>=3.5",
+    "speech_recognition": "SpeechRecognition>=3.10.0",
+    "pyperclip": "pyperclip>=1.8.2",
+    "pyautogui": "pyautogui>=0.9.54",
+}
+for mod, pkg in REQUIRED_PACKAGES.items():
     try:
         __import__(mod)
     except ImportError:
         import subprocess
-        print(f"正在自动安装轻量依赖库 {mod}...")
-        subprocess.check_call([sys.executable, "-m", "pip", "install", mod])
+        print(f"正在自动安装轻量依赖库 {pkg} (模块: {mod})...")
+        subprocess.check_call([sys.executable, "-m", "pip", "install", pkg])
 
 import pyautogui
 import pyperclip
@@ -37,14 +43,25 @@ SAMPLE_RATE = 16000
 
 
 def find_cores3_port():
-    """自动扫描并匹配 M5Stack CoreS3 设备"""
+    """自动扫描并匹配 M5Stack CoreS3 设备 (支持 Windows COM 与 macOS /dev/cu.usbmodem)"""
     ports = serial.tools.list_ports.comports()
     for p in ports:
         if p.vid == 0xCAFE and p.pid == 0x4001:
             return p.device
-        if "FlowDesk" in (p.description or ""):
+        if "FlowDesk" in (p.description or "") or "CoreS3" in (p.description or ""):
             return p.device
+        # ESP32-S3 原生 USB-JTAG/CDC 备选 VID
+        if p.vid == 0x303A:
+            return p.device
+
+    # macOS 特别回退：唯一外接 usbmodem 设备
+    if sys.platform == "darwin":
+        usbmodems = [p.device for p in ports if "usbmodem" in p.device]
+        if len(usbmodems) == 1:
+            return usbmodems[0]
+
     return None
+
 
 
 def pcm_to_wav_bytes(pcm_data: bytes, sample_rate: int = 16000) -> bytes:

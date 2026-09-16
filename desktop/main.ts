@@ -22,6 +22,7 @@ import { runDesktopRepliesSmoke } from './replies-smoke.ts';
 import { runDesktopRepliesNativeSmoke } from './replies-native-smoke.ts';
 import { runDesktopRepliesSoak } from './replies-soak.ts';
 import { isAllowedRendererUrl, isAllowedRequest, sameProcessIdentity, sameWindowIdentity, validCrop, windowHandleFromSource } from './guards.ts';
+import { executeAppleScript, isMacOS } from './macos-adapter';
 
 const execFileAsync = promisify(execFile);
 type CapturedWindow = { sourceId: string; name: string; hwnd?: string; process?: string; pid?: number; startedAt?: string };
@@ -56,7 +57,17 @@ class EncryptedSecretStore {
 }
 
 async function activeWindow(hwnd: string): Promise<{ hwnd: string; title: string; process?: string; pid: number; startedAt?: string }> {
-  if (process.platform !== 'win32') throw new Error('Pasting is supported on Windows only.');
+  if (isMacOS()) {
+    const { ok, output } = await executeAppleScript(
+      'tell application "System Events" to tell (first process whose frontmost is true) to return name & "|" & (unix id of it)'
+    );
+    if (ok && output) {
+      const [appName, pidStr] = output.split('|');
+      return { hwnd, title: appName || 'Active App', process: appName, pid: Number(pidStr) || 0, startedAt: new Date().toISOString() };
+    }
+    return { hwnd, title: 'macOS Application', pid: 0, startedAt: new Date().toISOString() };
+  }
+  if (process.platform !== 'win32') throw new Error('Pasting is supported on Windows and macOS only.');
   if (!/^\d+$/.test(hwnd)) throw new Error('Invalid selected window identity.');
   const { stdout } = await execFileAsync('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', identityScript(), '-Hwnd', hwnd], { windowsHide: true, timeout: 2_500 });
   if (!stdout.trim()) throw new Error('Selected window is no longer available.');
@@ -255,7 +266,7 @@ app.whenReady().then(async () => {
     let jpeg = output.toJPEG(85); for (let quality = 75; Buffer.byteLength(jpeg.toString('base64')) > 4_500_000 && quality >= 35; quality -= 10) jpeg = output.toJPEG(quality);
     if (Buffer.byteLength(jpeg.toString('base64')) > 4_500_000) throw new Error('Capture is too detailed to store safely; select a smaller area.');
     const outputSize = output.getSize(); const hwnd = windowHandleFromSource(source.id);
-    let identity: Awaited<ReturnType<typeof activeWindow>> | undefined; if (hwnd && process.platform === 'win32') { try { identity = await activeWindow(hwnd); } catch { /* capture remains usable; paste will re-check */ } }
+    let identity: Awaited<ReturnType<typeof activeWindow>> | undefined; if (hwnd && (process.platform === 'win32' || isMacOS())) { try { identity = await activeWindow(hwnd); } catch { /* capture remains usable; paste will re-check */ } }
     captured.set(source.id, { sourceId: source.id, name: source.name, hwnd, process: identity?.process, pid: identity?.pid, startedAt: identity?.startedAt });
     return { sourceId: source.id, sourceName: source.name, image: `data:image/jpeg;base64,${jpeg.toString('base64')}`, width: outputSize.width, height: outputSize.height };
   });

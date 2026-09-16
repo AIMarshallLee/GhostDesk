@@ -50,7 +50,11 @@ export class QwenVlmAdapter {
    * Qwen coordinates are typically [y, x] on a 0-1000 integer grid.
    */
   public static parseAction(response: string): QwenVlmParsedAction {
-    const text = response.trim();
+    // Strip markdown code fences if model enclosed output in ```
+    const text = response
+      .replace(/```[a-z]*\r?\n?/gi, '')
+      .replace(/```/g, '')
+      .trim();
     let thought: string | undefined;
 
     // Extract Thought if present
@@ -73,6 +77,24 @@ export class QwenVlmAdapter {
       const y = Math.min(1.0, Math.max(0.0, rawY / 1000));
       return {
         action: { kind: 'click', x, y, button: 'left', count: 1 },
+        rawText: actionSection,
+        thought,
+      };
+    }
+
+    // 1b. Match alternate click: click(x=..., y=...) or click(x=..., y=...)
+    const altClickMatch = /(?:click|mouse_click)\s*\(\s*x\s*=\s*(\d+)\s*,\s*y\s*=\s*(\d+)\s*\)/i.exec(actionSection);
+    if (altClickMatch) {
+      const rawX = parseInt(altClickMatch[1], 10);
+      const rawY = parseInt(altClickMatch[2], 10);
+      return {
+        action: {
+          kind: 'click',
+          x: Math.min(1.0, Math.max(0.0, rawX / 1000)),
+          y: Math.min(1.0, Math.max(0.0, rawY / 1000)),
+          button: 'left',
+          count: 1,
+        },
         rawText: actionSection,
         thought,
       };

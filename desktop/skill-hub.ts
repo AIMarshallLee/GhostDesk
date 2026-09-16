@@ -111,7 +111,15 @@ export class SkillHubManager {
       steps.push(currentStep as SkillStep);
     }
 
-    if (!id) id = `skill_${name.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`;
+    if (!id) {
+      const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+      if (slug.length > 0) {
+        id = `skill_${slug}`;
+      } else {
+        const hex = Buffer.from(name, 'utf8').toString('hex').slice(0, 8);
+        id = `skill_${hex}`;
+      }
+    }
     if (!name) throw new Error('Invalid Skill Markdown: Missing name in frontmatter');
     if (steps.length === 0) throw new Error('Invalid Skill Markdown: Must contain at least one step');
 

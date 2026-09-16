@@ -26,11 +26,20 @@ except ImportError:
 def find_buddy_port():
     ports = serial.tools.list_ports.comports()
     for p in ports:
-        # 匹配 VID:PID 0xCAFE:0x4001 或 FlowDesk 产品名
+        # 匹配 VID:PID 0xCAFE:0x4001 或 FlowDesk/CoreS3 产品名
         if p.vid == 0xCAFE and p.pid == 0x4001:
             return p.device
-        if "FlowDesk" in (p.description or ""):
+        if "FlowDesk" in (p.description or "") or "CoreS3" in (p.description or ""):
             return p.device
+        if p.vid == 0x303A:
+            return p.device
+
+    # macOS 专属回退：自动匹配唯一的 usbmodem 串口
+    if sys.platform == "darwin":
+        usbmodems = [p.device for p in ports if "usbmodem" in p.device]
+        if len(usbmodems) == 1:
+            return usbmodems[0]
+
     return None
 
 

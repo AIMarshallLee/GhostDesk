@@ -66,6 +66,21 @@ processes: [wechat.exe]
   assert.equal(skill.steps[0].instruction, 'Send Hello World');
 });
 
+test('SkillHubManager generates stable hex ID for purely Chinese skill name', () => {
+  const hub = new SkillHubManager();
+  const md = `---
+name: 增值税发票下载
+processes: [chrome.exe]
+---
+
+### Step 1: 登录电子税局
+- Action: 点击开票菜单
+`;
+  const skill = hub.parseSkillMarkdown(md);
+  assert.equal(skill.name, '增值税发票下载');
+  assert.match(skill.id, /^skill_[0-9a-f]{8}$/);
+});
+
 test('SkillHubManager rejects invalid markdown missing name or steps', () => {
   const hub = new SkillHubManager();
 

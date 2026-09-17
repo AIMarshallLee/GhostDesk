@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { setTimeout, clearTimeout } from 'node:timers';
 import type { UsbStatus } from '../shared/types';
-import { createUsbChannel, type UsbReply } from './usb-channel';
+import { createUsbChannel, portOk, type UsbReply } from './usb-channel';
 
 export interface UsbSession {
   check(): void;
@@ -56,7 +56,7 @@ export function createUsbDevice(scriptPath: string, dependencies: {
     busy: () => !!owner || connecting,
     async connect(port: string) {
       if (owner || connecting) throw new Error('请先停止 USB 任务。');
-      if (!/^COM[1-9][0-9]{0,3}$/.test(port)) throw new Error('请选择有效串口。');
+      if (!portOk(port)) throw new Error('请选择有效串口。');
       connecting = true;
       const token = ++connectionEpoch;
       const current = () => { if (token !== connectionEpoch) throw new Error('USB 连接已取消。'); };

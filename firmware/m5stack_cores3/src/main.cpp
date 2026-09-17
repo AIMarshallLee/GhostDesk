@@ -783,13 +783,14 @@ void processMicrophone() {
     state.currentAudioVolume = (int)(sum / MIC_CHUNK_SAMPLES / 200);
     if (state.currentAudioVolume > 80) state.currentAudioVolume = 80;
 
+    // 发送十六进制音频块给宿主机 (CDC 协议传输，保持 Little-Endian 与标准 WAV 对齐)
     Serial.print("V:");
-    for (int i = 0; i < MIC_CHUNK_SAMPLES; ++i) {
-      uint16_t u = (uint16_t)micBuffer[i];
-      if (u < 0x1000) Serial.print('0');
-      if (u < 0x0100) Serial.print('0');
-      if (u < 0x0010) Serial.print('0');
-      Serial.print(u, HEX);
+    const uint8_t* rawBytes = (const uint8_t*)micBuffer;
+    size_t byteCount = MIC_CHUNK_SAMPLES * sizeof(int16_t);
+    for (size_t i = 0; i < byteCount; ++i) {
+      uint8_t b = rawBytes[i];
+      if (b < 0x10) Serial.print('0');
+      Serial.print(b, HEX);
     }
     Serial.println();
   }

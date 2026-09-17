@@ -38,3 +38,15 @@ test('listMacOSUsbSerialPorts returns empty array on non-macOS environment', asy
     assert.deepEqual(ports, []);
   }
 });
+
+test('portOk correctly validates both Windows COM and macOS usbmodem serial paths', async () => {
+  const { portOk } = await import('./usb-channel');
+  assert.equal(portOk('COM1'), true);
+  assert.equal(portOk('COM23'), true);
+  assert.equal(portOk('/dev/cu.usbmodem1101'), true);
+  assert.equal(portOk('/dev/tty.usbmodem2101'), true);
+  assert.equal(portOk('/dev/cu.usbserial-1410'), true);
+  assert.equal(portOk('invalid_port'), false);
+  assert.equal(portOk('/dev/null'), false);
+});
+

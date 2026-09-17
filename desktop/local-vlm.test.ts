@@ -50,3 +50,14 @@ test('qwen adapter parses hotkey and scroll actions', () => {
     assert.equal(parsedScroll.action.amount, 5);
   }
 });
+
+test('qwen adapter handles markdown fences and alternate click formats', () => {
+  const fencedOutput = '```\nThought: Click the search box\nAction: click(x=350, y=120)\n```';
+  const parsedFenced = QwenVlmAdapter.parseAction(fencedOutput);
+  assert.equal(parsedFenced.thought, 'Click the search box');
+  assert.equal(parsedFenced.action.kind, 'click');
+  if (parsedFenced.action.kind === 'click') {
+    assert.equal(parsedFenced.action.x, 0.35);
+    assert.equal(parsedFenced.action.y, 0.12);
+  }
+});

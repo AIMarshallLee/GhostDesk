@@ -1,7 +1,8 @@
-import { exec } from 'node:child_process';
+import { exec, execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
 const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 export interface MacWindowInfo {
   id: string;
@@ -44,8 +45,8 @@ export function translateKeyToMac(key: string): string {
  * Generates an AppleScript command to safely focus / activate an application window.
  */
 export function getMacOSAppActivateScript(appName: string): string {
-  // Strip .app suffix if present
-  const cleanName = appName.replace(/\.app$/i, '');
+  // Strip .app suffix if present and escape quotes
+  const cleanName = appName.replace(/\.app$/i, '').replace(/"/g, '\\"');
   return `tell application "${cleanName}" to activate`;
 }
 
@@ -68,7 +69,7 @@ export async function listMacOSUsbSerialPorts(): Promise<string[]> {
 }
 
 /**
- * Safely executes AppleScript via `osascript` with strict timeout.
+ * Safely executes AppleScript via `osascript` with strict timeout using direct binary execution.
  */
 export async function executeAppleScript(script: string, timeoutMs: number = 3000): Promise<{ ok: boolean; output: string; error?: string }> {
   if (!isMacOS()) {
@@ -76,8 +77,7 @@ export async function executeAppleScript(script: string, timeoutMs: number = 300
   }
 
   try {
-    const escaped = script.replace(/"/g, '\\"');
-    const { stdout } = await execAsync(`osascript -e "${escaped}"`, { timeout: timeoutMs });
+    const { stdout } = await execFileAsync('osascript', ['-e', script], { timeout: timeoutMs });
     return { ok: true, output: stdout.trim() };
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : String(err);

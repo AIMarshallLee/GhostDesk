@@ -110,3 +110,99 @@ test('MCP server rejects unauthorized window switch', async () => {
   assert.equal(res.isError, true);
   assert.match(res.content[0].text!, /Workspace Security Violation/);
 });
+
+test('MCP server handles JSON-RPC initialize and ping', async () => {
+  const ws = new MultiWindowWorkspace([winWechat]);
+  const server = new GhostDeskMcpServer(
+    ws,
+    new HybridExecutor({ async execute() {} }, { async execute() {} }),
+  );
+
+  const initRes = await server.handleJsonRpc({
+    jsonrpc: '2.0',
+    id: 1,
+    method: 'initialize',
+    params: { protocolVersion: '2024-11-05' },
+  });
+  assert.equal(initRes?.id, 1);
+  assert.equal((initRes?.result as any)?.protocolVersion, '2024-11-05');
+  assert.equal((initRes?.result as any)?.serverInfo?.name, 'ghostdesk-mcp');
+
+  const pingRes = await server.handleJsonRpc({ jsonrpc: '2.0', id: 2, method: 'ping' });
+  assert.equal(pingRes?.id, 2);
+  assert.deepEqual(pingRes?.result, {});
+
+  // Notification returns null
+  const notifRes = await server.handleJsonRpc({
+    jsonrpc: '2.0',
+    method: 'notifications/initialized',
+  });
+  assert.equal(notifRes, null);
+});
+
+test('MCP server handles JSON-RPC tools/list with inputSchema', async () => {
+  const ws = new MultiWindowWorkspace([winWechat]);
+  const server = new GhostDeskMcpServer(
+    ws,
+    new HybridExecutor({ async execute() {} }, { async execute() {} }),
+  );
+
+  const listRes = await server.handleJsonRpc({ jsonrpc: '2.0', id: 3, method: 'tools/list' });
+  assert.equal(listRes?.id, 3);
+  const tools = (listRes?.result as any)?.tools;
+  assert.ok(Array.isArray(tools));
+  assert.equal(tools.length, 4);
+  assert.ok(tools.every((t: any) => t.inputSchema && typeof t.inputSchema === 'object'));
+});
+
+test('MCP server clamps coordinates and rejects invalid coordinates', async () => {
+  const ws = new MultiWindowWorkspace([winExcel]);
+  let capturedAction: any;
+  const fastDriver: FastDriver = {
+    async execute(action) {
+      capturedAction = action;
+    },
+  };
+  const server = new GhostDeskMcpServer(ws, new HybridExecutor({ async execute() {} }, fastDriver));
+
+  // Clamps out of bounds coordinates
+  const callRes = await server.handleJsonRpc({
+    jsonrpc: '2.0',
+    id: 4,
+    method: 'tools/call',
+    params: {
+      name: 'ghostdesk_act',
+      arguments: { kind: 'click', x: 1.5, y: -0.2 },
+    },
+  });
+  assert.equal(callRes?.id, 4);
+  assert.equal((callRes?.result as any)?.isError, undefined);
+  assert.equal(capturedAction?.x, 1.0);
+  assert.equal(capturedAction?.y, 0.0);
+
+  // Rejects NaN coordinates
+  const invalidRes = await server.callTool({
+    name: 'ghostdesk_act',
+    arguments: { kind: 'click', x: 'not-a-number' as any },
+  });
+  assert.equal(invalidRes.isError, true);
+  assert.match(invalidRes.content[0].text!, /must be a valid number/);
+});
+
+test('MCP server processes line with proper JSON-RPC error on invalid JSON', async () => {
+  const ws = new MultiWindowWorkspace([winExcel]);
+  const server = new GhostDeskMcpServer(
+    ws,
+    new HybridExecutor({ async execute() {} }, { async execute() {} }),
+  );
+
+  const errorLine = await server.processLine('{ invalid json here');
+  assert.ok(errorLine !== null);
+  const parsed = JSON.parse(errorLine!);
+  assert.equal(parsed.error.code, -32700);
+
+  const unknownMethod = await server.processLine(JSON.stringify({ jsonrpc: '2.0', id: 99, method: 'unknown_method' }));
+  const parsedMethod = JSON.parse(unknownMethod!);
+  assert.equal(parsedMethod.error.code, -32601);
+});
+

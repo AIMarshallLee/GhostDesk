@@ -69,9 +69,11 @@ graph TD
         FAST["Fast 快通道: 高速原生无损驱动 (50ms 瞬时填入)"]
     end
 
-    subgraph 操作系统与目标应用 ["Windows 11 宿主环境"]
-        SENSITIVE["高风控应用 (微信 / 钉钉 / 电商后台)"]
-        OFFICE["低风控应用 (Excel / Chrome / 本地 ERP / 记事本)"]
+    end
+
+    subgraph 操作系统与目标应用 ["操作系统宿主环境 (Windows 10/11 & macOS Sonoma/Sequoia)"]
+        SENSITIVE["高风控应用 (微信 / 企微 / 钉钉 / 电商后台)"]
+        OFFICE["低风控应用 (Excel / Chrome / Safari / 本地系统)"]
     end
 
     Agent生态与调度 <--> 桌面执行底座
@@ -88,13 +90,15 @@ graph TD
 ## ⚡ 快速上手
 
 ### 1. 环境准备
-- 操作系统：Windows 11 x64
-- 运行时：Node.js v20+ / npm v10+
-- Python（可选，用于运行 Python SDK）：Python 3.10+
-- *(可选硬件)*：树莓派 Pico 1（RP2040 核心板，淘宝约 15~20 元）+ Micro-USB 数据线
+- **操作系统支持**：
+  - 🪟 **Windows**：Windows 10 / Windows 11 (x64)
+  - 🍎 **macOS**：macOS 12+ (Monterey / Ventura / Sonoma / Sequoia)，全面原生支持 **Apple Silicon (M1/M2/M3/M4 系列)** 与 Intel 架构
+- **运行时环境**：Node.js v20+ / npm v10+
+- **Python（可选）**：Python 3.10+（用于运行 Python SDK 与 M5Stack CoreS3 守护进程）
+- *(可选硬件)*：树莓派 Pico 1（RP2040，约 15~20 元）或 M5Stack CoreS3（ESP32-S3），通过 USB 数据线直连 Windows 或 Mac
 
 ### 2. 安装与运行测试
-```powershell
+```bash
 # 克隆仓库
 git clone https://github.com/AIMarshallLee/GhostDesk.git
 cd GhostDesk
@@ -102,23 +106,44 @@ cd GhostDesk
 # 安装依赖
 npm ci
 
-# 运行自动化测试套件 (43+ 底座单元测试)
+# 运行自动化测试套件 (包含 236 项跨平台与硬件测试)
 npm test
 ```
 
 ### 3. 启动底座
 - **AI 员工工作台 (桌面客户端)**：
-  ```powershell
+  ```bash
   npm run desktop
   ```
 - **纯软件免硬件开发者模式**：
-  ```powershell
-  $env:FLOWDESK_DEV_MODE="1"; npm run desktop
-  ```
+  - Windows (PowerShell): `$env:FLOWDESK_DEV_MODE="1"; npm run desktop`
+  - macOS / Linux: `FLOWDESK_DEV_MODE=1 npm run desktop`
 - **启动标准 MCP 服务**：
-  ```powershell
+  ```bash
   npx tsx desktop/mcp-server.ts
   ```
+
+---
+
+## 🍎 macOS 系统原生支持与配置指南
+
+GhostDesk 从底层架构设计之初就具备完整的 **macOS 原生适配层 (`desktop/macos-adapter.ts`)**，绝非仅针对 Windows 开发：
+
+1. 🔌 **免驱物理硬件在环 (Zero-Driver HITL)**：
+   - 树莓派 Pico 与 M5Stack CoreS3 均上报国际标准的 USB HID 复合设备描述符（鼠标与键盘）；
+   - 插在 Mac 的 USB-C / USB-A 端口后，macOS 硬件抽象层直接将其识别为标准外部物理外设，**无需安装任何驱动，无需禁用 SIP 系统完整性保护**。
+2. 🔍 **macOS 串口秒级自动探查**：
+   - 底座通过 macOS 原生设备树路径 `/dev/cu.usbmodem*` 自动枚举并探查硬件串口，拔插即测，毫秒级握手。
+3. ⌨️ **跨平台智能按键编译器 (Key Modifier Translation)**：
+   - 内置智能按键映射，自动化任务下发时自动转换为 Mac 操作惯例：
+     - `Ctrl / Win` 自动编译为 `Command ⌘` 键；
+     - `Alt` 自动编译为 `Option ⌥` 键；
+     - `Backspace` 自动编译为 `Delete ⌫`；
+     - `Enter` 自动编译为 `Return ↩`。
+4. 🖥️ **macOS 窗口受控聚焦与守卫 (AppleScript & Quartz)**：
+   - 深度结合 AppleScript 与 macOS Quartz Window Services，支持通过应用 Bundle ID（如 `com.tencent.xinWeChat`、`com.google.Chrome`、`com.apple.Safari`）无缝切换与聚焦目标应用。
+5. 🛡️ **系统权限配置 (只需一次)**：
+   - 在 macOS 上初次启动客户端时，进入「系统设置 (System Settings) -> 隐私与安全性 (Privacy & Security) -> 辅助功能 (Accessibility)」，勾选允许 GhostDesk 即可安全运行。
 
 ---
 

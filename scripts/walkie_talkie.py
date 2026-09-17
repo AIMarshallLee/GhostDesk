@@ -18,14 +18,20 @@ import sys
 import time
 import wave
 
-# 自动补全必要轻量库
-for mod in ["serial", "speech_recognition", "pyperclip", "pyautogui"]:
+# 自动补全必要轻量库 (模块名 -> pip 包名映射，防止误装废弃的 serial 包)
+REQUIRED_PACKAGES = {
+    "serial": "pyserial>=3.5",
+    "speech_recognition": "SpeechRecognition>=3.10.0",
+    "pyperclip": "pyperclip>=1.8.2",
+    "pyautogui": "pyautogui>=0.9.54",
+}
+for mod, pkg in REQUIRED_PACKAGES.items():
     try:
         __import__(mod)
     except ImportError:
         import subprocess
-        print(f"正在自动安装轻量依赖库 {mod}...")
-        subprocess.check_call([sys.executable, "-m", "pip", "install", mod])
+        print(f"正在自动安装轻量依赖库 {pkg} (模块: {mod})...")
+        subprocess.check_call([sys.executable, "-m", "pip", "install", pkg])
 
 import pyautogui
 import pyperclip
@@ -37,14 +43,25 @@ SAMPLE_RATE = 16000
 
 
 def find_cores3_port():
-    """自动扫描并匹配 M5Stack CoreS3 设备"""
+    """自动扫描并匹配 M5Stack CoreS3 设备 (支持 Windows COM 与 macOS /dev/cu.usbmodem)"""
     ports = serial.tools.list_ports.comports()
     for p in ports:
         if p.vid == 0xCAFE and p.pid == 0x4001:
             return p.device
-        if "FlowDesk" in (p.description or ""):
+        if "FlowDesk" in (p.description or "") or "CoreS3" in (p.description or ""):
             return p.device
+        # ESP32-S3 原生 USB-JTAG/CDC 备选 VID
+        if p.vid == 0x303A:
+            return p.device
+
+    # macOS 特别回退：唯一外接 usbmodem 设备
+    if sys.platform == "darwin":
+        usbmodems = [p.device for p in ports if "usbmodem" in p.device]
+        if len(usbmodems) == 1:
+            return usbmodems[0]
+
     return None
+
 
 
 def pcm_to_wav_bytes(pcm_data: bytes, sample_rate: int = 16000) -> bytes:
@@ -66,10 +83,14 @@ def recognize_speech(wav_bytes: bytes) -> str:
             audio_data = recognizer.record(source)
 
     try:
-        # 使用 Google 免费语音识别接口 (支持中文普通话与英文)
+        # 1. 尝试调用 Google 免费高准确率语音接口 (中文普通话)
         text = recognizer.recognize_google(audio_data, language="zh-CN")
         return text.strip()
     except sr.UnknownValueError:
+        # 音量过小或无清晰人声
+        return ""
+    except sr.RequestError as e:
+        print(f"⚠️ 无法连接在线语音识别服务 ({e})。如处于离线/内网环境，可通过 pip install faster-whisper 启用私有化离线听写。")
         return ""
     except Exception as e:
         print(f"⚠️ 语音识别异常: {e}")
@@ -77,15 +98,17 @@ def recognize_speech(wav_bytes: bytes) -> str:
 
 
 def inject_prompt_to_active_window(text: str, auto_enter: bool = True):
-    """通过剪贴板瞬时填入当前窗口，完美支持中文与特殊符号"""
+    """通过剪贴板瞬时填入当前窗口，完美支持中文与特殊符号 (跨平台 Windows / macOS)"""
     if not text:
         return
     # 备份旧剪贴板
     old_clipboard = pyperclip.paste()
     try:
         pyperclip.copy(text)
-        time.sleep(0.05)
-        pyautogui.hotkey("ctrl", "v")
+        time.sleep(0.06)
+        # 跨平台按键适配：macOS 使用 Command+V，Windows 使用 Ctrl+V
+        paste_modifier = "command" if sys.platform == "darwin" else "ctrl"
+        pyautogui.hotkey(paste_modifier, "v")
         if auto_enter:
             time.sleep(0.08)
             pyautogui.press("enter")

@@ -61,7 +61,7 @@ export default function AttachmentsPage({ state, perform, notify }: PageProps) {
     catch (error) { notify((error as Error).message, true); }
     finally { setSaving(false); }
   };
-  if (!desktop) return <><PageHead title="附件助手" description="明确选择附件后识图、转录语音或摘要文件。" /><Empty title="请在 Windows 客户端中打开" detail="附件分析使用已保存的 Gemini 原生配置，并要求 Pico 硬件连接健康。" /></>;
+  if (!desktop) return <><PageHead title="附件助手" description="明确选择附件后识图、转录语音或摘要文件。" /><Empty title="请在桌面客户端中打开（支持 Windows / macOS）" detail="附件分析使用已保存的 Gemini 原生配置，并要求物理防封硬件连接健康。" /></>;
   return <>
     <PageHead title="附件助手" description="明确选择附件，提取内容并起草回复。持续回复中的附件仍由人工接管。" />
     <div className="attachment-layout"><section className="panel attachment-panel">

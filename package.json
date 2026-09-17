@@ -14,6 +14,7 @@
     "desktop": "npm run build && npm run build:desktop && electron .",
     "package:win": "npm run build && npm run build:desktop && node scripts/package-desktop.mjs",
     "test": "tsx --test server/*.test.ts desktop/*.test.ts",
+    "mcp": "tsx desktop/mcp-server-cli.ts",
     "start": "tsx server/index.ts"
   },
   "dependencies": {

@@ -48,6 +48,7 @@ export class GhostDeskMcpServer {
   constructor(
     private workspace: MultiWindowWorkspace,
     private executor: HybridExecutor,
+    private hardwareStatusProvider?: () => Record<string, unknown>,
   ) {}
 
   public getToolDefinitions(): McpToolDefinition[] {
@@ -72,6 +73,7 @@ export class GhostDeskMcpServer {
       required: ['kind'],
     };
     const secStatusSchema = { type: 'object', properties: {} };
+    const hwStatusSchema = { type: 'object', properties: {} };
 
     return [
       {
@@ -98,6 +100,12 @@ export class GhostDeskMcpServer {
         description: 'Retrieves current workspace security status, active window identity, and recent security events.',
         parameters: secStatusSchema,
         inputSchema: secStatusSchema,
+      },
+      {
+        name: 'ghostdesk_get_hardware_status',
+        description: 'Retrieves current USB physical anti-ban hardware status (CH9329, Pico 1, CoreS3, Arduino Universal) and channel arming state.',
+        parameters: hwStatusSchema,
+        inputSchema: hwStatusSchema,
       },
     ];
   }
@@ -208,6 +216,9 @@ export class GhostDeskMcpServer {
         case 'ghostdesk_get_security_status': {
           const active = this.workspace.getActiveWindow();
           const events = this.workspace.getRecentEvents(10);
+          const hardware = this.hardwareStatusProvider
+            ? this.hardwareStatusProvider()
+            : { connected: false, armed: false, channel: 'fast_fallback' };
           return {
             content: [
               {
@@ -216,11 +227,26 @@ export class GhostDeskMcpServer {
                   {
                     status: 'active',
                     activeWindow: active,
+                    hardware,
                     recentEvents: events,
                   },
                   null,
                   2,
                 ),
+              },
+            ],
+          };
+        }
+
+        case 'ghostdesk_get_hardware_status': {
+          const hardware = this.hardwareStatusProvider
+            ? this.hardwareStatusProvider()
+            : { connected: false, armed: false, channel: 'fast_fallback', message: 'No physical USB dongle attached' };
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify(hardware, null, 2),
               },
             ],
           };

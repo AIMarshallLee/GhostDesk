@@ -7,7 +7,7 @@ name = "ghostdesk"
 version = "1.0.0"
 description = "Official Python SDK for GhostDesk: Hardware-in-the-Loop Desktop AI Employee Substrate for Windows & macOS"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.8"
 license = "Apache-2.0"
 authors = [
     { name = "GhostDesk Contributors", email = "ghostdesk@users.noreply.github.com" }

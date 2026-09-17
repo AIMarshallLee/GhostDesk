@@ -26,11 +26,12 @@ test('MCP server lists tool definitions', () => {
   );
 
   const tools = server.getToolDefinitions();
-  assert.equal(tools.length, 4);
+  assert.equal(tools.length, 5);
   assert.ok(tools.some((t) => t.name === 'ghostdesk_list_workspace_windows'));
   assert.ok(tools.some((t) => t.name === 'ghostdesk_switch_focus'));
   assert.ok(tools.some((t) => t.name === 'ghostdesk_act'));
   assert.ok(tools.some((t) => t.name === 'ghostdesk_get_security_status'));
+  assert.ok(tools.some((t) => t.name === 'ghostdesk_get_hardware_status'));
 });
 
 test('MCP server executes list_workspace_windows tool', async () => {
@@ -151,7 +152,7 @@ test('MCP server handles JSON-RPC tools/list with inputSchema', async () => {
   assert.equal(listRes?.id, 3);
   const tools = (listRes?.result as any)?.tools;
   assert.ok(Array.isArray(tools));
-  assert.equal(tools.length, 4);
+  assert.equal(tools.length, 5);
   assert.ok(tools.every((t: any) => t.inputSchema && typeof t.inputSchema === 'object'));
 });
 
@@ -204,5 +205,42 @@ test('MCP server processes line with proper JSON-RPC error on invalid JSON', asy
   const unknownMethod = await server.processLine(JSON.stringify({ jsonrpc: '2.0', id: 99, method: 'unknown_method' }));
   const parsedMethod = JSON.parse(unknownMethod!);
   assert.equal(parsedMethod.error.code, -32601);
+});
+
+test('MCP server executes get_hardware_status tool and integrates hardware into security status', async () => {
+  const ws = new MultiWindowWorkspace([winExcel]);
+  const mockHardwareProvider = () => ({
+    connected: true,
+    armed: true,
+    device: 'CH9329 USB HID / FlowDesk Pico',
+    channel: 'ghost',
+  });
+
+  const server = new GhostDeskMcpServer(
+    ws,
+    new HybridExecutor({ async execute() {} }, { async execute() {} }),
+    mockHardwareProvider,
+  );
+
+  // 1. Dedicated tool call
+  const hwRes = await server.callTool({
+    name: 'ghostdesk_get_hardware_status',
+    arguments: {},
+  });
+  assert.equal(hwRes.isError, undefined);
+  const hwData = JSON.parse(hwRes.content[0].text!);
+  assert.equal(hwData.connected, true);
+  assert.equal(hwData.armed, true);
+  assert.equal(hwData.device, 'CH9329 USB HID / FlowDesk Pico');
+
+  // 2. Security status integration
+  const secRes = await server.callTool({
+    name: 'ghostdesk_get_security_status',
+    arguments: {},
+  });
+  assert.equal(secRes.isError, undefined);
+  const secData = JSON.parse(secRes.content[0].text!);
+  assert.equal(secData.hardware.connected, true);
+  assert.equal(secData.hardware.channel, 'ghost');
 });
 

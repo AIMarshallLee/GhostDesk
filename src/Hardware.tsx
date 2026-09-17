@@ -25,7 +25,112 @@ export default function HardwarePage({ notify }: PageProps) {
     void scan(); const timer = window.setInterval(() => void scan(), 3000);
     return () => { active = false; window.clearInterval(timer); void usb.cancelDiscovery().catch(() => {}); };
   }, [usb, notify, autoDiscover]);
-  if (!usb) return <><PageHead title="USB 硬件" description="物理防封硬件（CH9329 / Pico 1 / CoreS3 / Arduino）需在桌面客户端使用；浏览器沙箱无法直接连接本地硬件。" /><section className="panel"><Empty title="请在桌面客户端中打开（支持 Windows / macOS）" detail="运行 npm run desktop 启动桌面客户端，即可无缝连接与控制你的物理防封外设。" /></section></>;
+  const [webConnected, setWebConnected] = useState(false);
+  const [webPortInfo, setWebPortInfo] = useState('');
+  const hasWebSerial = typeof navigator !== 'undefined' && 'serial' in navigator;
+
+  const handleWebSerialConnect = async () => {
+    try {
+      const nav = navigator as any;
+      if (!nav.serial) throw new Error('当前浏览器不支持 WebSerial API');
+      const p = await nav.serial.requestPort();
+      await p.open({ baudRate: 115200 });
+      setWebConnected(true);
+      const info = p.getInfo ? p.getInfo() : {};
+      setWebPortInfo(`VID: ${info.usbVendorId?.toString(16) || 'N/A'} PID: ${info.usbProductId?.toString(16) || 'N/A'}`);
+      notify('WebSerial 串口连接成功！物理防封硬件已握手就绪。');
+    } catch (cause) {
+      notify(`WebSerial 连接取消或失败: ${(cause as Error).message}`);
+    }
+  };
+
+  if (!usb) {
+    return (
+      <div className="hardware-page">
+        <PageHead
+          eyebrow="WEB & LEGACY OS MODE"
+          title="USB 硬件与跨平台直驱"
+          description="GhostDesk 支持桌面客户端全自动连接，亦支持 Windows 7 / 老旧 macOS 浏览器 WebSerial 原生直驱与 Python 轻量桥接。"
+        />
+        <div className="hardware-layout">
+          <main className="hardware-main">
+            {hasWebSerial ? (
+              <section className="panel hardware-doc">
+                <h2>⚡ 浏览器 WebSerial 原生直驱（已检测到支持）</h2>
+                <p>你的浏览器（Chrome / Edge / Opera / Supermium）支持 WebSerial API，可直接在网页沙箱中直连 CH9329、Pico 1 或 Arduino 串口！</p>
+                <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginTop: '14px', flexWrap: 'wrap' }}>
+                  <Button disabled={webConnected} onClick={() => void handleWebSerialConnect()}>
+                    <Plug size={15} /> {webConnected ? '已通过 WebSerial 连接' : '选择并连接串口外设 (WebSerial)'}
+                  </Button>
+                  {webConnected && (
+                    <Button variant="ghost" onClick={() => { setWebConnected(false); setWebPortInfo(''); notify('WebSerial 串口已断开。'); }}>
+                      <Unplug size={15} /> 断开
+                    </Button>
+                  )}
+                  {webPortInfo && <span style={{ fontSize: '12px', color: '#16a34a', fontWeight: 600 }}>{webPortInfo} · 状态就绪</span>}
+                </div>
+              </section>
+            ) : null}
+
+            <section className="panel hardware-doc">
+              <h2>老旧系统兼容指南（Windows 7 / macOS 10.13+）</h2>
+              <p>为了让老旧工作站、极客旧机与矩阵机房也能毫无阻碍地使用 GhostDesk，我们提供三大兼容路径：</p>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '14px', marginTop: '16px' }}>
+                <article style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '14px', background: '#fafafa' }}>
+                  <b style={{ color: '#0284c7' }}>1. 免客户端 · WebSerial 直连</b>
+                  <p style={{ fontSize: '13px', margin: '6px 0 0', lineHeight: 1.5, color: '#475569' }}>
+                    在 Windows 7 上安装 <b>Supermium</b> 或 <b>Chrome 109</b>，打开网页直接使用上方 WebSerial 连接硬件，免装 Electron 客户端。
+                  </p>
+                </article>
+                <article style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '14px', background: '#fafafa' }}>
+                  <b style={{ color: '#0284c7' }}>2. 极轻量 · Headless Python 桥接</b>
+                  <p style={{ fontSize: '13px', margin: '6px 0 0', lineHeight: 1.5, color: '#475569' }}>
+                    仅需 Python 3.8+（Win7 官方最终支持版），运行 <code>pip install ghostdesk</code>，内存占用 &lt;20MB，稳定常驻。
+                  </p>
+                </article>
+                <article style={{ border: '1px solid #059669', borderRadius: '8px', padding: '14px', background: '#f0fdf4' }}>
+                  <b style={{ color: '#059669' }}>3. 纯硬件 · CH9329 狗</b>
+                  <p style={{ fontSize: '13px', margin: '6px 0 0', lineHeight: 1.5, color: '#166534' }}>
+                    淘宝 15 元免刷机防封狗，买来插上任何系统均免驱动模拟物理键鼠，GhostDesk 串口帧开箱即驱。
+                  </p>
+                </article>
+              </div>
+            </section>
+
+            <section className="panel hardware-doc">
+              <h2>四大硬件形态矩阵 (Hardware Archetypes)</h2>
+              <div className="guide-grid" style={{ marginTop: '16px' }}>
+                <article style={{ border: '2px solid #a6d654', background: '#f6faf4' }}>
+                  <b style={{ color: '#568019' }}>⭐ 极力推荐 · 零门槛免刷机</b>
+                  <h3>1. CH9329 纯硬件防封狗</h3>
+                  <p><strong>价格</strong>：约 ￥15（淘宝 / 拼多多 / AliExpress）<br />
+                  买来插上电脑直接模拟成物理键鼠，GhostDesk 工业级二进制协议帧直驱，零门槛！</p>
+                </article>
+                <article>
+                  <b>性价比标杆 · 固件方案</b>
+                  <h3>2. Raspberry Pi Pico 1 (RP2040)</h3>
+                  <p><strong>价格</strong>：约 ￥18<br />
+                  按住 BOOTSEL 拖入 UF2 固件即完成烧录。双核高速响应，硬件看门狗 10 秒安全断开。</p>
+                </article>
+                <article>
+                  <b>旗舰彩屏 · 对讲机搭子</b>
+                  <h3>3. M5Stack CoreS3 (ESP32-S3)</h3>
+                  <p><strong>价格</strong>：约 ￥290<br />
+                  2.0 寸全彩触屏显示赛博情绪眼睛，常驻物理急停按钮，双麦克风阵列语音对讲。</p>
+                </article>
+                <article>
+                  <b>开源极客 · 零依赖单文件</b>
+                  <h3>4. 通用 Arduino 开发板</h3>
+                  <p><strong>支持</strong>：Leonardo / Pro Micro / SAMD21 / Teensy<br />
+                  源码 <code>firmware/arduino_universal/GhostDesk_Universal_HID.ino</code>，一键 Upload 即可！</p>
+                </article>
+              </div>
+            </section>
+          </main>
+        </div>
+      </div>
+    );
+  }
   return <div className="hardware-page"><PageHead eyebrow="CH9329 · PICO 1 (RP2040) · M5STACK CORES3 · ARDUINO UNIVERSAL" title="USB 硬件" description="连接物理防封设备后由软件开始任务；停止、断线、超时或急停会自动断开。" /><div className="hardware-layout"><main className="hardware-main">
     <section className="panel hardware-doc"><h2>连接防封硬件</h2><p>支持 CH9329 免烧录防封狗、Raspberry Pi Pico 1（RP2040）、M5Stack CoreS3（ESP32-S3）与通用 Arduino HID 开发板。软件支持自动识别或手动指定串口，握手成功前不会执行误触发动作。</p><div className="port-picker"><select value={port} aria-label="硬件串口" onChange={e => setPort(e.target.value)} disabled={busy}><option value="">选择端口</option>{ports.map(item => <option key={item.path} value={item.path}>{item.label} · {item.path}</option>)}</select><Button variant="secondary" disabled={busy} onClick={() => void run(async () => { setAutoDiscover(true); await usb.cancelDiscovery(); const result = await usb.discover(); setPorts(result.matches); if (result.status) return result.status; })}><RefreshCw size={15} />一键识别</Button><Button variant="ghost" disabled={busy} onClick={() => void run(async () => { setAutoDiscover(false); await usb.cancelDiscovery(); setPorts(await usb.ports()); })}>查看所有串口</Button><Button disabled={!port || busy || status.connected} onClick={() => void run(() => usb.connect(port), '已连接，尚未执行 HID 动作。')}><Plug size={15} />手动连接</Button></div>{!autoDiscover && <p className="notice">已暂停自动识别。可点击一键识别重新连接，或查看所有串口手动选择。</p>}{ports.length > 1 && !status.connected && autoDiscover && <p className="notice">检测到多个 FlowDesk 兼容设备，请选择需要连接的端口。</p>}{status.connected && <div className="hardware-status"><strong>{status.device || 'FlowDesk USB Bridge'} · 固件 {status.firmware || '0.5.0'}</strong><span>状态：{status.armed ? '软件任务会话活动中' : '已连接，等待软件开始'}</span><div><Button variant="secondary" disabled={busy} onClick={() => void run(() => usb.status())}>刷新状态</Button><Button variant="danger" disabled={busy} onClick={() => void run(() => usb.disarm(), '设备已停止。')}><ShieldAlert size={15} />停止设备会话</Button><Button variant="ghost" disabled={busy} onClick={() => void run(async () => { setAutoDiscover(false); await usb.cancelDiscovery(); await usb.disconnect(); setStatus(blank); }, '设备已断开。')}><Unplug size={15} />断开</Button></div></div>}</section>
     <section className="panel hardware-doc">

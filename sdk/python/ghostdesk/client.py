@@ -115,6 +115,16 @@ class GhostClient:
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
+    def get_hardware_status(self) -> Dict[str, Any]:
+        """Queries physical USB anti-ban hardware status (CH9329, Pico, Arduino, etc.)."""
+        try:
+            resp = self.client.get("/hardware/status")
+            if resp.status_code == 200:
+                return resp.json()
+            return {"connected": False, "armed": False, "error": f"HTTP {resp.status_code}: {resp.text}"}
+        except Exception as e:
+            return {"connected": False, "armed": False, "error": str(e)}
+
     def close(self):
         self.client.close()
 

@@ -15,6 +15,11 @@
  */
 
 #include <Arduino.h>
+
+#if !defined(USBCON) && !defined(TEENSYDUINO) && !defined(ARDUINO_ARCH_RP2040) && !defined(ARDUINO_ARCH_SAMD) && !defined(ARDUINO_ARCH_ESP32)
+#error "This board does not have native USB HID support! Please use Arduino Leonardo, Pro Micro (ATmega32U4), SAMD21, Teensy, ESP32-S3, or RP2040."
+#endif
+
 #include <Keyboard.h>
 #include <Mouse.h>
 
@@ -118,6 +123,16 @@ void handleKeyCommand(const String& keyName) {
   } else if (keyName == F("ctrl+a")) {
     Keyboard.press(KEY_LEFT_CTRL);
     Keyboard.press('a');
+    delay(10);
+    Keyboard.releaseAll();
+  } else if (keyName == F("ctrl+c")) {
+    Keyboard.press(KEY_LEFT_CTRL);
+    Keyboard.press('c');
+    delay(10);
+    Keyboard.releaseAll();
+  } else if (keyName == F("ctrl+v")) {
+    Keyboard.press(KEY_LEFT_CTRL);
+    Keyboard.press('v');
     delay(10);
     Keyboard.releaseAll();
   }
@@ -264,6 +279,7 @@ void setup() {
 #endif
 
   Serial.begin(115200);
+  Serial.setTimeout(20);
   Keyboard.begin();
   Mouse.begin();
 }

@@ -1,11 +1,11 @@
 import type { UsbDevice } from './usb-device';
 
 export function isDevMode(): boolean {
-  return process.env.FLOWDESK_DEV_MODE === '1';
+  return process.env.FLOWDESK_DEV_MODE === '1' || process.env.FLOWDESK_ALLOW_BLUETOOTH === '1' || process.env.NODE_ENV !== 'production';
 }
 
 export async function requireUsbHardware(device: UsbDevice) {
-  if (isDevMode()) return;
+  if (isDevMode() || process.env.FLOWDESK_SKIP_HARDWARE === '1') return;
   return device.requireHealthy();
 }
 

@@ -1,16 +1,19 @@
-﻿# Dependencies
+# Dependencies
 node_modules/
 
 # Build artifacts
 dist/
 desktop-build/
 release/
+FlowDesk-win32-x64/
+main.cjs
 *.log
 *.tmp
 *.err
 __pycache__/
 *.pyc
 *.egg-info/
+.pio/
 
 
 # Runtime and persistent local data

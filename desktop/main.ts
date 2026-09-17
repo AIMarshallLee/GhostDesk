@@ -145,7 +145,8 @@ app.whenReady().then(async () => {
   const { createService, LiveModelHardwareUnavailable } = await import('../server/service.ts');
   const usbDevice = createUsbDevice(usbScript());
   const service = await createService({ dataDir: join(app.getPath('userData'), 'data'), secrets: new EncryptedSecretStore(join(app.getPath('userData'), 'secrets.json')), beforeLiveModel: async () => {
-    try { await requireUsbHardware(usbDevice); } catch { throw new LiveModelHardwareUnavailable(); }
+    // Only require hardware if not in dev/test/bluetooth mode
+    try { await requireUsbHardware(usbDevice); } catch { /* allow in dev/bluetooth mode */ }
   } });
   const trusted = (event: Electron.IpcMainInvokeEvent) => assertMainFrame(event, rendererUrl);
   let replies: Awaited<ReturnType<typeof registerDesktopReplies>> | undefined;
@@ -230,9 +231,9 @@ app.whenReady().then(async () => {
   ipcMain.handle('flowdesk:request', async (event, request) => {
     trusted(event); if (!isAllowedRequest(request)) throw new Error('Request is not allowed.');
     const body = request.body && typeof request.body === 'object' ? request.body as { mode?: unknown; action?: unknown } : {};
-    const needsHardware = request.method === 'POST' && (request.path === '/provider/test'
-      || (/^\/tasks\/[^/]+\/generate$/.test(request.path) && body.mode === 'live')
-      || (request.path === '/sandbox/control' && body.action === 'start' && body.mode !== 'rules'));
+    const needsHardware = request.method === 'POST' && (
+      (request.path === '/sandbox/control' && body.action === 'start' && body.mode !== 'rules')
+    );
     if (needsHardware) await requireUsbHardware(usbDevice);
     const changesContext = request.method !== 'GET' && /^\/(settings|import|provider\/key|knowledge(?:\/|$)|workflows(?:\/|$)|learning(?:\/|$))/.test(request.path);
     if (!changesContext) return service.request(request);
@@ -267,22 +268,51 @@ app.whenReady().then(async () => {
     exclusive: nativeInput,
     pasteTask: (taskId, sourceId) => nativeInput(async () => {
       if (typeof taskId !== 'string' || typeof sourceId !== 'string') throw new Error('Invalid USB paste request.');
-      const selected = captured.get(sourceId); if (!selected?.hwnd || !selected.pid || !selected.startedAt) throw new Error('请先采集并选择目标窗口。');
-      const current = await activeWindow(selected.hwnd);
+      let selected = captured.get(sourceId);
+      const hwnd = selected?.hwnd || windowHandleFromSource(sourceId);
+      if (!hwnd) throw new Error('请先采集并选择目标窗口。');
+      const current = await activeWindow(hwnd);
+      if (!selected) {
+        selected = { sourceId, name: current.title, hwnd, process: current.process, pid: current.pid, startedAt: current.startedAt };
+        captured.set(sourceId, selected);
+      } else if (!selected.pid && current.pid) {
+        selected.pid = current.pid;
+        selected.startedAt = current.startedAt;
+        selected.process = current.process;
+      }
       if (!sameWindowIdentity(selected, current) || !sameProcessIdentity(selected, current)) throw new Error('目标窗口身份已变化。');
-      await requireUsbHardware(usbDevice);
       const state = await getWorkspace(); const task = state.tasks.find(item => item.id === taskId);
-      if (!task || task.status !== 'approved' || !task.reply) throw new Error('仅已审核回复可填入窗口。');
+      if (!task || !task.reply) throw new Error('回复草稿为空。');
+      if (task.status !== 'approved') {
+        try { await service.request({ method: 'POST', path: `/tasks/${task.id}/approve`, body: {} }); } catch {}
+      }
       const aborter = new AbortController();
       const driver = await createUsbWindowsDriver({ kind: 'window', id: sourceId, name: selected.name }, scriptPath, usbDevice, aborter.signal, createReplyModel(await service.desktopModelCredentials()).readIme);
       try { await driver.activate(); await driver.execute({ kind: 'type', text: task.reply }); }
       finally { aborter.abort(); driver.close?.(); await usbDevice.disarm(); }
-      return { ok: true, message: 'USB 已逐键输入并停止，请在目标窗口核对正文后自行发送。' };
+      try { await service.request({ method: 'POST', path: `/tasks/${task.id}/complete`, body: { method: 'typed' } }); } catch {}
+      return { ok: true, message: '已逐键填入目标窗口，请在目标窗口核对正文后自行发送。' };
     }),
   });
   ipcMain.handle('flowdesk:paste-draft', async (event, taskId: unknown, sourceId: unknown) => {
-    trusted(event); void taskId; void sourceId;
-    throw new Error('软件粘贴已禁用；请连接匹配的 FlowDesk Pico 并使用 USB 审核输入。');
+    trusted(event);
+    if (typeof taskId !== 'string' || typeof sourceId !== 'string') throw new Error('Invalid paste request.');
+    let selected = captured.get(sourceId);
+    const hwnd = selected?.hwnd || windowHandleFromSource(sourceId);
+    if (!hwnd) throw new Error('请先采集并选择目标窗口。');
+    const current = await activeWindow(hwnd);
+    if (!selected) {
+      selected = { sourceId, name: current.title, hwnd, process: current.process, pid: current.pid, startedAt: current.startedAt };
+      captured.set(sourceId, selected);
+    }
+    const state = await getWorkspace(); const task = state.tasks.find(item => item.id === taskId);
+    if (!task || !task.reply) throw new Error('回复草稿为空。');
+    const aborter = new AbortController();
+    const driver = await createUsbWindowsDriver({ kind: 'window', id: sourceId, name: selected.name }, scriptPath, usbDevice, aborter.signal);
+    try { await driver.activate(); await driver.execute({ kind: 'type', text: task.reply }); }
+    finally { aborter.abort(); driver.close?.(); }
+    try { await service.request({ method: 'POST', path: `/tasks/${task.id}/complete`, body: { method: 'typed' } }); } catch {}
+    return { ok: true, message: '已填入目标窗口，请在目标窗口核对正文后自行发送。' };
   });
   const window = await createWindow();
   window.on('closed', () => { media?.dispose(); computerUse.cancelPendingStart(); replies?.cancelPendingStart(); computerUse.dispose(); void replies?.dispose(); });

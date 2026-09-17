@@ -40,10 +40,12 @@ export function createUsbDevice(scriptPath: string, dependencies: {
   });
   const stateCopy = () => structuredClone(state);
   const requireHealthy = async () => {
-    if (!channel) throw new Error('必须连接匹配的 FlowDesk Pico USB 设备后才能使用。');
+    if (!channel) throw new Error('必须连接匹配的 FlowDesk Pico USB 或 M5Stack CoreS3 设备后才能使用。');
     const reply = await exchange('status');
-    if (reply.protocol !== 4 || reply.device !== 'FlowDesk USB Bridge' || reply.board !== 'pico' || reply.firmware !== '0.5.0') {
-      state = { ...state, message: 'USB 设备或固件不匹配；需要 FlowDesk Pico 1、协议 4、固件 0.5.0。' };
+    const isPico = reply.protocol === 4 && reply.device === 'FlowDesk USB Bridge' && reply.board === 'pico' && reply.firmware === '0.5.0';
+    const isCoreS3 = reply.protocol === 4 && (reply.device === 'FlowDesk CyberDeck Pro' || reply.board === 'm5stack-cores3');
+    if (!isPico && !isCoreS3) {
+      state = { ...state, message: 'USB 设备或固件不匹配；需要 FlowDesk Pico 1 (固件 0.5.0) 或 M5Stack CoreS3 (固件 0.8.0+)。' };
       throw new Error(state.message);
     }
     return stateCopy();

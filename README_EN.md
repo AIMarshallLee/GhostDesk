@@ -207,17 +207,36 @@ Save to `skills/` directory and GhostDesk will automatically discover and regist
 
 ---
 
-## 🔌 Hardware Setup (30-Second Flashing) / 硬件烧录
+## 🔌 Four Hardware Archetypes / 四大硬件形态
 
-GhostDesk supports two reliable hardware execution options:
+GhostDesk supports four versatile hardware tiers to match any use case or budget:
 
-### Option A: Ultra-Low Cost — Raspberry Pi Pico 1 (RP2040, ~$2)
+| Hardware Archetype | Device | Cost | Flashing Barrier | Highlights |
+| :--- | :--- | :--- | :--- | :--- |
+| **⭐ Turnkey Dongle** | **CH9329 USB-HID Module** | ~$2 | **Zero (No Flashing Needed)** | Plug-and-play straight from retail; native GhostDesk serial frame driver |
+| **Budget Workhorse** | **Raspberry Pi Pico (RP2040)** | ~$3 | Minimal (Drag & drop UF2) | Dual-core Cortex-M0+; authentic USB HID composite keyboard & mouse |
+| **Geek Open Source** | **Universal Arduino (Leonardo/Pro Micro/SAMD21)** | ~$3 - $5 | Minimal (Arduino IDE 1-click) | Single-file zero-dependency source code `firmware/arduino_universal/` |
+| **Cyber Companion** | **M5Stack CoreS3 (ESP32-S3)** | ~$40 | Minimal (WebSerial 1-click) | 2.0" Touch LCD, expressive cyber eyes, physical touch emergency stop, walkie-talkie |
+
+---
+
+### Option 1: Zero-Flashing Turnkey Dongle — CH9329 (Recommended for Beginners)
+1. Purchase a **"CH9329 Serial to USB HID Module"** on Taobao, AliExpress, or eBay (~$2).
+2. **No compiler, no Python, no firmware flashing required**.
+3. Plug directly into your computer USB port, open GhostDesk Desktop, select the port, and enjoy 100% hardware anti-ban automation!
+
+### Option 2: Budget Workhorse — Raspberry Pi Pico 1 (RP2040)
 1. Hold down the **BOOTSEL** button on your Pico and plug it into your computer via USB.
 2. A mass storage drive named `RPI-RP2` will appear.
 3. Drag and drop `firmware/release/flowdesk_usb_bridge.uf2` onto the `RPI-RP2` drive.
 4. The Pico will reboot automatically as an authentic USB HID controller.
 
-### Option B: Interactive Smart Touch Terminal — M5Stack CoreS3 (ESP32-S3)
+### Option 3: Geek Open-Source — Universal Arduino HID
+1. Compatible with any native USB board: Arduino Leonardo, Pro Micro (ATmega32U4), Seeed Studio XIAO SAMD21, Teensy 2.0/3.x/4.x.
+2. Open `firmware/arduino_universal/GhostDesk_Universal_HID.ino` in Arduino IDE.
+3. Select your board and port, then click **Upload**! Built-in watchdog disarms automatically on 10s heartbeat timeout.
+
+### Option 4: Cyber Companion & Smart Touch Terminal — M5Stack CoreS3 (ESP32-S3)
 > Features a 2.0" IPS touch screen, audio alarms, and a **Physical Emergency Kill-Switch**!
 1. **Web Browser 1-Click Flasher**: Open [firmware/m5stack_cores3/web_flasher.html](firmware/m5stack_cores3/web_flasher.html) in Chrome or Edge, connect CoreS3 via USB-C, and flash with one click.
 2. **From Source**: Compile and upload via VS Code + PlatformIO or Arduino IDE (see [firmware/m5stack_cores3/README.md](firmware/m5stack_cores3/README.md)).

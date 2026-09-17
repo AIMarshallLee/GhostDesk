@@ -211,23 +211,42 @@ processes: [chrome.exe, excel.exe]
 
 ---
 
-## 🔌 硬件极速烧录 (30 秒搞定)
+## 🔌 四大硬件形态 (从 15 元免烧录到带屏物理急停)
 
-GhostDesk 支持两种高可靠硬件方案：
+GhostDesk 现已支持覆盖全梯度的 4 种物理在环硬件形态：
 
-### 方案 A：极简高性价比方案 —— 树莓派 Pico 1 (RP2040，约 15~20 元)
+| 硬件形态 | 代表设备 | 价格 | 刷机门槛 | 特性亮点 |
+| :--- | :--- | :--- | :--- | :--- |
+| **⭐ 纯硬件防封狗** | **CH9329 USB-HID 模块** | ￥15 | **完全免刷机 (零代码)** | 淘宝/拼多多即买即用，GhostDesk 二进制协议直驱 |
+| **性价比标杆** | **树莓派 Pico 1 (RP2040)** | ￥18 | 极简 (UF2 拖拽秒刷) | 双核高速处理，原生物理复合键鼠模拟 |
+| **极客开源单文件** | **通用 Arduino (Leonardo / Pro Micro / SAMD21)** | ￥15 - ￥35 | 极简 (Arduino IDE 一键上传) | 单文件零第三方依赖源码 `firmware/arduino_universal/` |
+| **高端触屏旗舰** | **M5Stack CoreS3 (ESP32-S3)** | ￥290 | 极简 (网页 WebSerial 秒刷) | 2.0 寸全彩触屏、赛博眼睛、物理急停按钮、双麦克风对讲机 |
+
+---
+
+### 方案 1：免刷机零门槛 —— CH9329 纯硬件防封狗 (强烈推荐小白用户)
+1. 在淘宝、拼多多或速卖通搜索 **“CH9329 串口转 USB HID 模块”**（单价约 12~15 元）。
+2. **无需下载任何编译工具、无需安装 Python、无需刷写固件**。
+3. 买来直接插在电脑 USB 口上，打开 GhostDesk 桌面端，选择该串口即可自动直通！
+
+### 方案 2：性价比标杆 —— 树莓派 Pico 1 (RP2040)
 1. 按住 Pico 板上的白色 **BOOTSEL** 按键，插上 USB 数据线连接电脑。
 2. 电脑会自动弹出一个名为 `RPI-RP2` 的可移动磁盘。
 3. 将本项目下的 `firmware/release/flowdesk_usb_bridge.uf2` 文件直接拖拽粘贴进该磁盘。
 4. Pico 自动重启，瞬间变身为合法的标准外部硬件 HID 键盘鼠标！
 
-### 方案 B：高端全彩触控带屏方案 —— M5Stack CoreS3 (ESP32-S3)
+### 方案 3：极客开源单文件 —— 通用 Arduino 开发板
+1. 支持 Arduino Leonardo、Pro Micro (ATmega32U4)、Seeed Studio XIAO SAMD21、Teensy 等原生 USB 主控板。
+2. 打开 Arduino IDE，打开 `firmware/arduino_universal/GhostDesk_Universal_HID.ino`。
+3. 选择对应板型与端口，点击 **Upload（上传）** 即可变身！纯标准库零外部依赖。
+
+### 方案 4：高端全彩触控带屏方案 —— M5Stack CoreS3 (ESP32-S3)
 > 拥有 2.0 寸全彩触控屏、声音报警与**物理急停按钮 (Kill Switch)**，AI 暴走误操作一触即停！
 1. **浏览器一键烧录 (Web Flasher)**：使用 Chrome / Edge 浏览器打开 [firmware/m5stack_cores3/web_flasher.html](firmware/m5stack_cores3/web_flasher.html)，插上 CoreS3 点击“安装固件”即可秒级完成烧录。
 2. **源码编译烧录**：支持 VS Code + PlatformIO / Arduino IDE 一键编译烧录（详见 [firmware/m5stack_cores3/README.md](firmware/m5stack_cores3/README.md)）。
 3. 烧录完成后，CoreS3 屏幕将实时显示 AI 动作日志、心跳租约以及底部物理急停大红钮。
 
-设备连接后，在 GhostDesk 客户端中打开 **USB 硬件控制**，设备即可秒级自动连接识别。
+设备连接后，在 GhostDesk 客户端中打开 **USB 硬件**，设备即可秒级自动连接识别。
 
 ---
 

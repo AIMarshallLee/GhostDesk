@@ -58,9 +58,7 @@ function Assert-ActiveBound($hwnd, $bound) {
   $current = Get-Process -Id $currentPid -ErrorAction Stop
   [FlowDeskCuNative+RECT]$currentRect = New-Object 'FlowDeskCuNative+RECT'
   if (-not [FlowDeskCuNative]::GetWindowRect($hwnd, [ref]$currentRect)) { throw 'unable to recheck selected window' }
-  $actualTitle = [FlowDeskCuNative]::Title($hwnd)
-  $titleOk = ($bound.title -eq $actualTitle) -or ($actualTitle -like "*$($bound.title)*") -or ($bound.title -like "*$($actualTitle)*") -or ($current.ProcessName -eq 'Weixin')
-  if ($bound.pid -ne [int]$currentPid -or $bound.process -ne $current.ProcessName -or (-not $titleOk)) { throw 'selected window identity or size changed' }
+  if ($bound.pid -ne [int]$currentPid -or $bound.process -ne $current.ProcessName -or $bound.processStart -ne $current.StartTime.ToUniversalTime().ToString('O') -or $bound.title -ne [FlowDeskCuNative]::Title($hwnd) -or $bound.width -ne ($currentRect.Right - $currentRect.Left) -or $bound.height -ne ($currentRect.Bottom - $currentRect.Top)) { throw 'selected window identity or size changed' }
 }
 
 try { Add-Type -TypeDefinition $source -ReferencedAssemblies System.Drawing -ErrorAction Stop } catch { Fail 'native helper compilation failed' }
@@ -82,8 +80,7 @@ try {
   $identity = @{ hwnd = $hwndText; pid = [int]$windowProcessId; process = $process.ProcessName; processStart = $process.StartTime.ToUniversalTime().ToString('O'); title = $title; width = $width; height = $height }
   if ($request.operation -eq 'inspect') { Reply @{ ok = $true; identity = $identity }; return }
   $bound = $request.bound
-  $titleOk = ($bound.title -eq $identity.title) -or ($identity.title -like "*$($bound.title)*") -or ($bound.title -like "*$($identity.title)*") -or ($process.ProcessName -eq 'Weixin')
-  if ($bound.pid -ne $identity.pid -or $bound.process -ne $identity.process -or (-not $titleOk)) { throw 'selected window identity or size changed' }
+  if ($bound.pid -ne $identity.pid -or $bound.process -ne $identity.process -or $bound.processStart -ne $identity.processStart -or $bound.title -ne $identity.title -or $bound.width -ne $identity.width -or $bound.height -ne $identity.height) { throw 'selected window identity or size changed' }
   if ($request.operation -eq 'capture') { Reply @{ ok = $true; base64 = [FlowDeskCuNative]::Capture($hwnd,$width,$height); width = $width; height = $height }; return }
   if ($request.operation -eq 'capture-input') { Assert-ActiveBound $hwnd $bound; Reply @{ ok = $true; base64 = [FlowDeskCuNative]::CaptureInput($rect,$width,$height); width = $width; height = $height }; return }
   if ($request.operation -eq 'activate') {

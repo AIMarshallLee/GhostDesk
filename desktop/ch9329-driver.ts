@@ -1,4 +1,4 @@
-﻿/**
+/**
  * CH9329 Serial-to-HID Dongle Protocol Driver
  *
  * CH9329 is an industrial turnkey USB-HID chip. It receives standard binary frames
@@ -110,6 +110,46 @@ export class Ch9329Protocol {
     const encoder = new TextEncoder();
     const bytes = encoder.encode(text.slice(0, 50)); // Max 50 chars per frame
     return Ch9329Protocol.buildFrame(Ch9329Protocol.CMD_SEND_ASCII, bytes);
+  }
+
+  /**
+   * Standard USB HID keycode mapping for common automation keys.
+   */
+  public static readonly HID_KEYCODES: Record<string, { modifier: number; key: number }> = {
+    'enter': { modifier: 0, key: 0x28 },
+    'return': { modifier: 0, key: 0x28 },
+    'tab': { modifier: 0, key: 0x2B },
+    'backspace': { modifier: 0, key: 0x2A },
+    'delete': { modifier: 0, key: 0x4C },
+    'escape': { modifier: 0, key: 0x29 },
+    'esc': { modifier: 0, key: 0x29 },
+    'space': { modifier: 0, key: 0x2C },
+    'up': { modifier: 0, key: 0x52 },
+    'down': { modifier: 0, key: 0x51 },
+    'left': { modifier: 0, key: 0x50 },
+    'right': { modifier: 0, key: 0x4F },
+    'home': { modifier: 0, key: 0x4A },
+    'end': { modifier: 0, key: 0x4D },
+    'pageup': { modifier: 0, key: 0x4B },
+    'pagedown': { modifier: 0, key: 0x4E },
+    'shift': { modifier: 0x02, key: 0x00 },
+    'ctrl+a': { modifier: 0x01, key: 0x04 },
+    'ctrl+c': { modifier: 0x01, key: 0x06 },
+    'ctrl+v': { modifier: 0x01, key: 0x19 },
+    'paste': { modifier: 0x01, key: 0x19 },
+  };
+
+  /**
+   * Builds a key packet for a named automation key (e.g. 'enter', 'tab', 'ctrl+v').
+   */
+  public static buildNamedKeyFrame(name: string): Uint8Array | undefined {
+    const mapping = Ch9329Protocol.HID_KEYCODES[name.toLowerCase().trim()];
+    if (!mapping) return undefined;
+    return Ch9329Protocol.buildKeyFrame({
+      modifier: mapping.modifier,
+      reserved: 0,
+      keys: [mapping.key, 0, 0, 0, 0, 0],
+    });
   }
 
   /**

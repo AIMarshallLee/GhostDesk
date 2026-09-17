@@ -42,7 +42,9 @@ export function createUsbDevice(scriptPath: string, dependencies: {
   const requireHealthy = async () => {
     if (!channel) throw new Error('必须连接匹配的 FlowDesk Pico USB 设备后才能使用。');
     const reply = await exchange('status');
-    if (reply.protocol !== 4 || reply.device !== 'FlowDesk USB Bridge' || reply.board !== 'pico' || reply.firmware !== '0.5.0') {
+    const validDevices = ['FlowDesk USB Bridge', 'GhostDesk USB Bridge'];
+    const validBoards = ['pico', 'cores3', 'arduino-universal'];
+    if (reply.protocol !== 4 || !validDevices.includes(reply.device) || !validBoards.includes(reply.board.toLowerCase()) || reply.firmware !== '0.5.0') {
       state = { ...state, message: 'USB 设备或固件不匹配；需要 FlowDesk Pico 1、协议 4、固件 0.5.0。' };
       throw new Error(state.message);
     }

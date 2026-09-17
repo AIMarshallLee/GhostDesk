@@ -1,6 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 
-export type UsbReply = { id: number; ok: boolean; protocol: 4; device: 'FlowDesk USB Bridge'; firmware: string; board: 'pico'; armed: boolean; session: string; leaseMs: number; error?: string };
+export type UsbReply = { id: number; ok: boolean; protocol: 4; device: string; firmware: string; board: string; armed: boolean; session: string; leaseMs: number; error?: string };
 type Transport = { request(value: { port: string; frame: string }): Promise<unknown>; close(): void };
 type Options = { transport?: Transport; timeoutMs?: number };
 export const portOk = (port: string) =>
@@ -11,7 +11,9 @@ const err = (message: string) => new Error(message);
 
 function check(value: unknown, id: number): UsbReply {
   if (!value || typeof value !== 'object') throw err('USB 响应无效'); const v = value as Record<string, unknown>;
-  if (v.id !== id || v.protocol !== 4 || v.device !== 'FlowDesk USB Bridge' || v.board !== 'pico' || typeof v.firmware !== 'string' || !v.firmware || v.firmware.length > 64 || typeof v.armed !== 'boolean' || typeof v.session !== 'string' || (v.session !== '' && !/^[0-9a-f]{16}$/.test(v.session)) || !Number.isInteger(v.leaseMs) || (v.leaseMs as number) < 0 || (v.leaseMs as number) > 10_000 || typeof v.ok !== 'boolean' || (v.error !== undefined && (typeof v.error !== 'string' || v.error.length > 160))) throw err('USB 协议确认无效');
+  const validDevices = ['FlowDesk USB Bridge', 'GhostDesk USB Bridge'];
+  const validBoards = ['pico', 'cores3', 'arduino-universal'];
+  if (v.id !== id || v.protocol !== 4 || typeof v.device !== 'string' || !validDevices.includes(v.device) || typeof v.board !== 'string' || !validBoards.includes((v.board as string).toLowerCase()) || typeof v.firmware !== 'string' || !v.firmware || v.firmware.length > 64 || typeof v.armed !== 'boolean' || typeof v.session !== 'string' || (v.session !== '' && !/^[0-9a-f]{16}$/.test(v.session)) || !Number.isInteger(v.leaseMs) || (v.leaseMs as number) < 0 || (v.leaseMs as number) > 10_000 || typeof v.ok !== 'boolean' || (v.error !== undefined && (typeof v.error !== 'string' || v.error.length > 160))) throw err('USB 协议确认无效');
   if (!v.ok) throw err('USB 设备拒绝命令');
   return v as UsbReply;
 }

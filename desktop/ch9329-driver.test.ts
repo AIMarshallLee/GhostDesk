@@ -1,4 +1,4 @@
-﻿import test from 'node:test';
+import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Ch9329Protocol } from './ch9329-driver';
 
@@ -56,3 +56,19 @@ test('CH9329 builds ASCII text string frame', () => {
   assert.equal(asciiFrame[3], Ch9329Protocol.CMD_SEND_ASCII);
   assert.equal(asciiFrame[4], 9); // 'GhostDesk'.length = 9
 });
+
+test('CH9329 builds named automation keys', () => {
+  const enterFrame = Ch9329Protocol.buildNamedKeyFrame('enter');
+  assert.ok(enterFrame);
+  assert.equal(enterFrame[5], 0); // modifier
+  assert.equal(enterFrame[7], 0x28); // keycode for Enter
+
+  const ctrlVFrame = Ch9329Protocol.buildNamedKeyFrame('ctrl+v');
+  assert.ok(ctrlVFrame);
+  assert.equal(ctrlVFrame[5], 0x01); // LCtrl
+  assert.equal(ctrlVFrame[7], 0x19); // 'v'
+
+  const unknown = Ch9329Protocol.buildNamedKeyFrame('fictional-key');
+  assert.equal(unknown, undefined);
+});
+

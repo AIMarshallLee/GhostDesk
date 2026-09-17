@@ -32,7 +32,7 @@ export function registerUsbIpc(options: {
   });
   handle('usb-ports', async () => {
     options.idle(); if (options.offlineTest || process.platform !== 'win32') return [];
-    const script = "Get-CimInstance Win32_PnPEntity | Where-Object { $_.Name -match '\\(COM[1-9][0-9]{0,3}\\)' } | ForEach-Object { [pscustomobject]@{ path = ([regex]::Match($_.Name, 'COM[1-9][0-9]{0,3}')).Value; label = $_.Name } } | ConvertTo-Json -Compress";
+    const script = "$cmd = if (Get-Command Get-CimInstance -ErrorAction SilentlyContinue) { Get-CimInstance Win32_PnPEntity } else { Get-WmiObject Win32_PnPEntity }; $cmd | Where-Object { $_.Name -match '\\(COM[1-9][0-9]{0,3}\\)' } | ForEach-Object { [pscustomobject]@{ path = ([regex]::Match($_.Name, 'COM[1-9][0-9]{0,3}')).Value; label = $_.Name } } | ConvertTo-Json -Compress";
     const { stdout } = await promisify(execFile)('powershell.exe', ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-Command', script], { windowsHide: true, timeout: 5000, maxBuffer: 128000 });
     const result = stdout.trim() ? JSON.parse(stdout) : [];
     return (Array.isArray(result) ? result : [result]).filter(item => /^COM[1-9][0-9]{0,3}$/.test(item.path) && typeof item.label === 'string').map(item => ({ path: item.path, label: item.label }));

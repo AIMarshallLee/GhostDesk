@@ -77,7 +77,7 @@ export default function HardwarePage({ notify }: PageProps) {
       <h2>烧录与自建测试</h2>
       <p>先保存 0.5 固件，再按住板上的 BOOTSEL 插入 Pico，将固件拖入 RPI-RP2。若使用通用 Arduino，请直接打开 <code>firmware/arduino_universal/GhostDesk_Universal_HID.ino</code> 上传；若使用 CH9329，则直接插上免刷机！</p>
       <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '16px' }}>
-        <Button variant="secondary" disabled={busy} onClick={() => void run(async () => { const saved = await window.flowdesk!.saveFirmware(); if (!saved.saved) throw new Error('未保存固件文件。'); notify(`固件已保存到 ${saved.path || '所选位置'}`); })}><Download size={15} />保存 Pico 0.5 UF2</Button>
+        <Button variant="secondary" disabled={busy} onClick={() => void run(async () => { const saved = await window.flowdesk!.saveFirmware(); if (!saved.saved) throw new Error('未保存固件文件。'); notify(`固件已保存到 ${saved.path || '所选位置'}`); })}><Download size={15} />保存 0.5 UF2</Button>
       </div>
       <Field label="自建测试输入区" hint="点击“测试输入”后，设备会在此输入 FlowDesk，完成后自动停止。"><textarea id="hardware-test-input" ref={box} rows={2} aria-label="USB 自建测试输入区" /></Field>
       <div className="hardware-test-actions">

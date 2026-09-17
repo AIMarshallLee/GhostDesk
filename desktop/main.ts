@@ -77,7 +77,7 @@ async function activeWindow(hwnd: string): Promise<{ hwnd: string; title: string
 
 async function sourceFor(sourceId: string) {
   const sources = await desktopCapturer.getSources({ types: ['window'], thumbnailSize: { width: 4096, height: 4096 }, fetchWindowIcons: false });
-  return sources.find((source) => source.id === sourceId && !source.name.includes('FlowDesk'));
+  return sources.find((source) => source.id === sourceId && !source.name.includes('FlowDesk') && !source.name.includes('GhostDesk'));
 }
 
 async function createWindow() {

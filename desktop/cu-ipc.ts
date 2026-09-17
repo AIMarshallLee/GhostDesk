@@ -71,7 +71,7 @@ export async function registerComputerUse(options: {
     // Names only, and only after the user's explicit window-selection action.
     const sources = await desktopCapturer.getSources({ types: ['window'], thumbnailSize: { width: 0, height: 0 }, fetchWindowIcons: false });
     for (const [id, target] of targets) if (target.kind === 'window') targets.delete(id);
-    const available = sources.filter(source => !source.name.includes('FlowDesk')).map(source => ({ id: source.id, name: source.name, kind: 'window' as const }));
+    const available = sources.filter(source => !source.name.includes('FlowDesk') && !source.name.includes('GhostDesk')).map(source => ({ id: source.id, name: source.name, kind: 'window' as const }));
     for (const target of available) targets.set(target.id, target);
     return available;
   });

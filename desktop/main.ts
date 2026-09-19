@@ -169,6 +169,10 @@ app.whenReady().then(async () => {
   const computerUse = await registerComputerUse({ trusted, directory: app.getPath('userData'), secrets: new EncryptedSecretStore(join(app.getPath('userData'), 'computer-use-secrets.json')), scriptPath, usbDevice, getWorkspace, getTypingCredentials: service.desktopModelCredentials, assertOtherIdle: assertRepliesIdle });
   replies = await registerDesktopReplies({ trusted, directory: join(app.getPath('userData'), 'desktop-replies'), scriptPath, usbDevice, getWorkspace,
     getCredentials: service.desktopModelCredentials, getGeminiCredentials: computerUse.getGeminiCredentials, getGeminiSummary: computerUse.getGeminiSummary, selectedTarget: computerUse.selectedTarget,
+    recordLead: async (conversationName: string, text: string) => {
+      try { await service.request({ method: 'POST', path: '/leads/qualify', body: { conversationName, text } }); }
+      catch { /* best effort */ }
+    },
     assertOtherIdle: () => { if (nativeInputBusy || workspaceMutating || computerUse.controller.isBusy() || media?.isActive()) throw new Error('请等待设置保存、桌面输入、附件分析或停止单次电脑操作。'); },
   });
   media = registerGeminiMediaIpc({ trusted, usbDevice, getWorkspace, getCredentials: computerUse.getGeminiCredentials,

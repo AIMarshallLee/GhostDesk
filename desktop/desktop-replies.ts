@@ -8,12 +8,14 @@ const fileName = 'desktop-replies.json';
 const maxJobs = 600;
 const same = (a: VisibleChatMessage, b: VisibleChatMessage) => a.direction === b.direction && a.text === b.text && a.stamp === b.stamp;
 const clone = <T>(value: T): T => structuredClone(value);
-const defaultConfig = (): DesktopReplyConfig => ({ conversations: [], layout: clone(defaultReplyLayout), mode: 'manual', pollSeconds: 15, maxRepliesPerHour: 30, knowledgeIds: [], workflowId: '', inputBackend: 'usb', modelProtocol: 'gemini-native' });
+const defaultConfig = (): DesktopReplyConfig => ({ conversations: [], layout: clone(defaultReplyLayout), mode: 'manual', pollSeconds: 15, maxRepliesPerHour: 30, knowledgeIds: [], workflowId: '', inputBackend: 'usb', modelProtocol: 'gemini-native', humanDelay: true, splitBubbles: false });
 const initial = (): DesktopReplyState => ({ version: 1, config: defaultConfig(), status: 'stopped', message: '', busy: false, cycle: 0, jobs: [], checkpoints: {}, events: [] });
 function event(state: DesktopReplyState, type: string, detail: string) { state.events.unshift({ at: new Date().toISOString(), type, detail: detail.slice(0, 240) }); state.events.splice(80); }
 function validConfig(value: DesktopReplyConfig): void {
   if (value?.modelProtocol !== undefined && !['gemini-native', 'openai-vision'].includes(value.modelProtocol)) throw new Error('持续回复模型协议无效');
   if (value?.inputBackend !== undefined && !['windows', 'usb'].includes(value.inputBackend)) throw new Error('输入执行方式无效');
+  if (value?.humanDelay !== undefined && typeof value.humanDelay !== 'boolean') throw new Error('拟人延时配置无效');
+  if (value?.splitBubbles !== undefined && typeof value.splitBubbles !== 'boolean') throw new Error('气泡拆分配置无效');
   if (!value || !Array.isArray(value.conversations) || value.conversations.length > 30 || !['manual', 'auto'].includes(value.mode) || !Number.isInteger(value.pollSeconds) || value.pollSeconds < 2 || value.pollSeconds > 3600 || !Number.isInteger(value.maxRepliesPerHour) || value.maxRepliesPerHour < 1 || value.maxRepliesPerHour > 500 || !Array.isArray(value.knowledgeIds) || value.knowledgeIds.length > 50 || typeof value.workflowId !== 'string' || value.workflowId.length > 200) throw new Error('回复配置无效');
   const seen = new Set<string>();
   const ids = new Set<string>(); for (const item of value.conversations) { if (!item || typeof item.id !== 'string' || typeof item.name !== 'string' || !item.id.trim() || !item.name.trim() || item.id !== item.id.trim() || item.name !== item.name.trim() || item.id.length > 200 || item.name.length > 200 || ['__proto__', 'constructor', 'prototype'].includes(item.id) || seen.has(item.name) || ids.has(item.id) || typeof item.enabled !== 'boolean') throw new Error('会话配置必须使用唯一名称'); seen.add(item.name); ids.add(item.id); }
@@ -75,11 +77,31 @@ export async function createDesktopReplies(deps: DesktopRepliesDependencies) {
     if (!observation(fresh) || fresh.conversationName !== conversation.name || fresh.composerText || !sameMessages(fresh.messages, job.observation.messages)) { job.status = 'handoff'; job.detail = '发现新消息或人工草稿，未发送旧回复'; handoff(conversation, job.detail); await persist(); return; }
     job.status = 'sending'; job.updatedAt = new Date(now()).toISOString(); await persist();
     if (signal.aborted || token !== epoch || ioFault) return;
+    const bubbles = state.config.splitBubbles ? splitReplyBubbles(job.reply) : [job.reply];
+    let currentObservation = fresh;
+    let lastResult: { status: 'visually_confirmed' | 'uncertain' | 'stale'; observation?: ChatObservation } = { status: 'uncertain' };
+    const isTest = process.env.NODE_ENV === 'test' || Boolean(process.env.TEST) || process.execArgv.some(a => a.includes('--test')) || process.argv.some(a => a.includes('--test'));
+    if (state.config.humanDelay && !deps.now && !isTest) {
+      const delayMs = 1500 + Math.floor(Math.random() * 2000);
+      await new Promise<void>((r) => { const t = setTimeout(r, delayMs); signal.addEventListener('abort', () => { clearTimeout(t); r(); }, { once: true }); });
+      if (signal.aborted || token !== epoch) return;
+    }
     try {
-      const result = await surface.deliver(conversation, fresh, job.reply, signal);
+      for (let i = 0; i < bubbles.length; i++) {
+        const bubble = bubbles[i];
+        if (i > 0 && state.config.humanDelay && !deps.now && !isTest) {
+          const pauseMs = 600 + Math.floor(Math.random() * 1000);
+          await new Promise<void>((r) => { const t = setTimeout(r, pauseMs); signal.addEventListener('abort', () => { clearTimeout(t); r(); }, { once: true }); });
+          if (signal.aborted || token !== epoch) return;
+        }
+        const result = await surface.deliver(conversation, currentObservation, bubble, signal);
+        lastResult = result;
+        if (result.status !== 'visually_confirmed' || !result.observation) break;
+        currentObservation = result.observation;
+      }
       if (signal.aborted || token !== epoch) { job.status = 'uncertain'; job.detail = '发送过程被中断，等待人工确认'; handoff(conversation, job.detail); await persist(); return; }
-      const confirmed = result.status === 'visually_confirmed' && result.observation && observation(result.observation) && result.observation.conversationName === conversation.name;
-      job.status = confirmed ? 'visually_confirmed' : result.status === 'stale' ? 'handoff' : 'uncertain'; job.observation = confirmed ? result.observation! : fresh; if (confirmed) state.checkpoints[conversation.id] = { ...job.observation, messages: job.observation.messages.slice(-60) }; else handoff(conversation, result.status === 'stale' ? '发送前上下文已变化' : '发送结果不确定'); job.updatedAt = new Date(now()).toISOString(); job.detail = confirmed ? '视觉确认已发送' : result.status === 'stale' ? '发送前上下文已变化' : '发送结果不确定，等待人工'; await persist();
+      const confirmed = lastResult.status === 'visually_confirmed' && lastResult.observation && observation(lastResult.observation) && lastResult.observation.conversationName === conversation.name;
+      job.status = confirmed ? 'visually_confirmed' : lastResult.status === 'stale' ? 'handoff' : 'uncertain'; job.observation = confirmed ? lastResult.observation! : fresh; if (confirmed) state.checkpoints[conversation.id] = { ...job.observation, messages: job.observation.messages.slice(-60) }; else handoff(conversation, lastResult.status === 'stale' ? '发送前上下文已变化' : '发送结果不确定'); job.updatedAt = new Date(now()).toISOString(); job.detail = confirmed ? '视觉确认已发送' : lastResult.status === 'stale' ? '发送前上下文已变化' : '发送结果不确定，等待人工'; await persist();
     } catch { job.status = 'uncertain'; handoff(conversation, '发送结果不确定'); job.updatedAt = new Date(now()).toISOString(); job.detail = '发送结果不确定，等待人工确认'; try { await persist(); } catch { /* already fail-closed */ } }
   };
   const scan = async (conversation: ReplyConversation, signal: AbortSignal, token: number) => {
@@ -91,7 +113,10 @@ export async function createDesktopReplies(deps: DesktopRepliesDependencies) {
       const added = overlap(old.messages, next.messages);
       state.checkpoints[conversation.id] = { ...next, messages: next.messages.slice(-60) };
       if (added === undefined || added.some((m) => m.direction === 'outgoing')) { handoff(conversation, added === undefined ? '消息连续性无法确认' : '检测到人工发出消息'); return; }
-      const incoming = added.filter((m) => m.direction === 'incoming'); if (incoming.length) { const context = await deps.context(state.config); if (signal.aborted || token !== epoch) return; const input = incoming.map((m) => m.text).join('\n'); if (input.length > 4096) { handoff(conversation, '新增消息过长，请人工处理'); return; } const id = `reply-${now()}-${Math.random().toString(36).slice(2, 8)}`; jobContexts.set(id, context); state.jobs.unshift({ id, conversationId: conversation.id, conversationName: conversation.name, input, reply: '', status: 'queued', observation: next, attempts: 0, createdAt: new Date(now()).toISOString(), updatedAt: new Date(now()).toISOString(), detail: '', knowledgeIds: clone(state.config.knowledgeIds), knowledgeHash: createHash('sha256').update(JSON.stringify(context)).digest('hex'), mode: state.config.mode }); }
+      const incoming = added.filter((m) => m.direction === 'incoming'); if (incoming.length) {
+        const input = incoming.map((m) => m.text).join('\n');
+        if (deps.onIncomingLead) { void Promise.resolve(deps.onIncomingLead(conversation.name, input)).catch(() => {}); }
+        const context = await deps.context(state.config); if (signal.aborted || token !== epoch) return; if (input.length > 4096) { handoff(conversation, '新增消息过长，请人工处理'); return; } const id = `reply-${now()}-${Math.random().toString(36).slice(2, 8)}`; jobContexts.set(id, context); state.jobs.unshift({ id, conversationId: conversation.id, conversationName: conversation.name, input, reply: '', status: 'queued', observation: next, attempts: 0, createdAt: new Date(now()).toISOString(), updatedAt: new Date(now()).toISOString(), detail: '', knowledgeIds: clone(state.config.knowledgeIds), knowledgeHash: createHash('sha256').update(JSON.stringify(context)).digest('hex'), mode: state.config.mode }); }
       if (state.jobs.length > maxJobs) { const removable = state.jobs.findIndex(job => !['queued', 'generating', 'ready', 'sending', 'uncertain'].includes(job.status) && now() - Date.parse(job.updatedAt) >= 3600000); if (removable >= 0) state.jobs.splice(removable, 1); else { handoff(conversation, '本地保留任务已满，请等待一小时后继续'); state.jobs.shift(); } }
       for (const id of jobContexts.keys()) if (!state.jobs.some(job => job.id === id && ['queued', 'generating'].includes(job.status))) jobContexts.delete(id);
       for (const job of state.jobs.filter((j) => j.conversationId === conversation.id && (j.status === 'queued' || j.status === 'ready'))) await processJob(job, conversation, signal, token);
@@ -119,3 +144,20 @@ export async function createDesktopReplies(deps: DesktopRepliesDependencies) {
   };
 }
 function sameMessages(a: VisibleChatMessage[], b: VisibleChatMessage[]) { return a.length === b.length && a.every((m, i) => same(m, b[i])); }
+export function splitReplyBubbles(text: string): string[] {
+  if (text.length <= 30) return [text];
+  const parts = text.split(/(?<=[。\n！？!?])\s*/).filter(p => p.trim().length > 0);
+  if (parts.length <= 1) return [text];
+  const chunks: string[] = [];
+  let current = '';
+  for (const part of parts) {
+    if ((current + part).length > 25 && current.length > 0) {
+      chunks.push(current.trim());
+      current = part;
+    } else {
+      current += part;
+    }
+  }
+  if (current.trim()) chunks.push(current.trim());
+  return chunks.length > 0 ? chunks : [text];
+}

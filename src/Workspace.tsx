@@ -1,18 +1,99 @@
 import { useState } from 'react';
-import { BookOpen, Plus, Search, Pencil, Trash2, Workflow as WorkflowIcon, Check, Download, Upload, ShieldCheck, KeyRound, Server, Eye, EyeOff, Activity, FileText, ArrowUpRight, Save, FolderLock, CircleCheck, AlertCircle, RotateCcw } from 'lucide-react';
-import type { AppState, Knowledge, Workflow } from '../shared/types';
+import { BookOpen, Plus, Search, Pencil, Trash2, Workflow as WorkflowIcon, Check, Download, Upload, ShieldCheck, KeyRound, Server, Eye, EyeOff, Activity, FileText, ArrowUpRight, Save, FolderLock, CircleCheck, AlertCircle, RotateCcw, Sparkles } from 'lucide-react';
+import type { AppState, Knowledge, Workflow, PlaybookPack, ChatExtractResult } from '../shared/types';
 import type { PageProps } from './App';
 import { Button, Empty, Field, Modal, PageHead, formatTime, scenarios } from './components';
 import { api, downloadJson, navigate } from './api';
 import LearningPanel from './Learning';
 
 export function KnowledgePage(props: PageProps) {
-  const { state, perform, busy } = props;
+  const { state, perform, busy, notify } = props;
   const [search, setSearch] = useState(''); const [edit, setEdit] = useState<Knowledge | 'new'>(); const [remove, setRemove] = useState<Knowledge>();
+  const [showPlaybookModal, setShowPlaybookModal] = useState(false);
+  const [presetPacks, setPresetPacks] = useState<PlaybookPack[]>([]);
+  const [showExtractModal, setShowExtractModal] = useState(false);
+  const [extractTranscript, setExtractTranscript] = useState('');
+  const [extractResult, setExtractResult] = useState<ChatExtractResult | null>(null);
+
+  const openPlaybooks = async () => {
+    try {
+      const res = await api<{ ok: boolean; playbooks: PlaybookPack[] }>('GET', '/playbooks/presets');
+      if (res.ok) setPresetPacks(res.playbooks);
+      setShowPlaybookModal(true);
+    } catch (e) { notify((e as Error).message, true); }
+  };
+
+  const installPack = async (packId: string) => {
+    try {
+      const res = await perform<{ ok: boolean; installedCount: number; packName: string }>('POST', '/playbooks/install', { packId }, '实战话术包已装载');
+      if (res?.ok) setShowPlaybookModal(false);
+    } catch (e) { notify((e as Error).message, true); }
+  };
+
+  const runExtract = async (autoSave: boolean) => {
+    if (!extractTranscript.trim()) { notify('请先粘贴真实的聊天记录文本。', true); return; }
+    try {
+      const res = await perform<{ ok: boolean; result: ChatExtractResult }>('POST', '/playbooks/extract', { transcript: extractTranscript, autoSave }, autoSave ? '话术已存入知识库' : undefined);
+      if (res?.ok) {
+        setExtractResult(res.result);
+        if (autoSave) setShowExtractModal(false);
+        else notify(`已提炼 ${res.result.suggestedQa.length} 组问答，请预览确认`);
+      }
+    } catch (e) { notify((e as Error).message, true); }
+  };
+
   const items = state.knowledge.filter(k => `${k.title} ${k.content} ${k.tags.join(' ')}`.includes(search));
-  return <><PageHead title="业务知识库" description="把产品信息、常见问题和服务规则，变成助手的工作依据。" actions={<Button onClick={() => setEdit('new')}><Plus size={17} />添加知识</Button>} /><LearningPanel {...props} /><div className="knowledge-summary"><span className="summary-icon"><BookOpen size={23} /></span><div><strong>每一次回复，都有你的业务底气。</strong><p>启用的条目会参与回复起草。请保持信息准确，并避免加入不必要的个人信息。</p></div><span className="subtle-badge">{state.knowledge.filter(k => k.enabled).length} 条已启用</span></div><div className="collection-toolbar"><span>全部知识 <b>{items.length}</b></span><div className="search-box compact"><Search size={16} /><input aria-label="搜索知识" value={search} onChange={e => setSearch(e.target.value)} placeholder="搜索标题、标签或内容…" /></div></div><div className="knowledge-grid">{items.map(item => <article className={`knowledge-card ${!item.enabled ? 'is-disabled' : ''}`} key={item.id}><div className="card-top"><span className="document-icon"><FileText size={21} /></span><button className={`switch ${item.enabled ? 'on' : ''}`} role="switch" aria-checked={item.enabled} aria-label={`${item.enabled ? '停用' : '启用'} ${item.title}`} disabled={busy} onClick={() => void perform('PUT', `/knowledge/${item.id}`, { enabled: !item.enabled })}><span /></button></div><h2>{item.title}</h2><p className="knowledge-preview">{item.content}</p><div className="tags">{item.tags.map(tag => <span key={tag}>{tag}</span>)}</div><div className="card-bottom"><small>{formatTime(item.updatedAt)}</small><div><button className="icon-button" aria-label={`编辑 ${item.title}`} onClick={() => setEdit(item)}><Pencil size={16} /></button><button className="icon-button" aria-label={`删除 ${item.title}`} onClick={() => setRemove(item)}><Trash2 size={16} /></button></div></div></article>)}</div>{!items.length && <Empty title={search ? '没有匹配的知识' : '给助手一份业务说明'} detail="例如产品规格、售后流程，或者你偏好的表达方式。" action={<Button onClick={() => setEdit('new')}><Plus size={16} />添加第一条知识</Button>} />}
+  return <><PageHead title="业务知识库" description="把产品信息、常见问题和服务规则，变成助手的工作依据。" actions={<div style={{ display: 'flex', gap: '8px' }}><Button variant="secondary" onClick={() => void openPlaybooks()}><Sparkles size={16} />载入实战话术包</Button><Button variant="secondary" onClick={() => { setExtractResult(null); setShowExtractModal(true); }}><FileText size={16} />AI 萃取聊天记录</Button><Button onClick={() => setEdit('new')}><Plus size={17} />添加知识</Button></div>} /><LearningPanel {...props} /><div className="knowledge-summary"><span className="summary-icon"><BookOpen size={23} /></span><div><strong>每一次回复，都有你的业务底气。</strong><p>启用的条目会参与回复起草。请保持信息准确，并避免加入不必要的个人信息。</p></div><span className="subtle-badge">{state.knowledge.filter(k => k.enabled).length} 条已启用</span></div><div className="collection-toolbar"><span>全部知识 <b>{items.length}</b></span><div className="search-box compact"><Search size={16} /><input aria-label="搜索知识" value={search} onChange={e => setSearch(e.target.value)} placeholder="搜索标题、标签或内容…" /></div></div><div className="knowledge-grid">{items.map(item => <article className={`knowledge-card ${!item.enabled ? 'is-disabled' : ''}`} key={item.id}><div className="card-top"><span className="document-icon"><FileText size={21} /></span><button className={`switch ${item.enabled ? 'on' : ''}`} role="switch" aria-checked={item.enabled} aria-label={`${item.enabled ? '停用' : '启用'} ${item.title}`} disabled={busy} onClick={() => void perform('PUT', `/knowledge/${item.id}`, { enabled: !item.enabled })}><span /></button></div><h2>{item.title}</h2><p className="knowledge-preview">{item.content}</p><div className="tags">{item.tags.map(tag => <span key={tag}>{tag}</span>)}</div><div className="card-bottom"><small>{formatTime(item.updatedAt)}</small><div><button className="icon-button" aria-label={`编辑 ${item.title}`} onClick={() => setEdit(item)}><Pencil size={16} /></button><button className="icon-button" aria-label={`删除 ${item.title}`} onClick={() => setRemove(item)}><Trash2 size={16} /></button></div></div></article>)}</div>{!items.length && <Empty title={search ? '没有匹配的知识' : '给助手一份业务说明'} detail="例如产品规格、售后流程，或者你偏好的表达方式。" action={<Button onClick={() => setEdit('new')}><Plus size={16} />添加第一条知识</Button>} />}
     {edit && <KnowledgeEditor item={edit === 'new' ? undefined : edit} busy={busy} onClose={() => setEdit(undefined)} onSave={async body => { const result = await perform(edit === 'new' ? 'POST' : 'PUT', edit === 'new' ? '/knowledge' : `/knowledge/${edit.id}`, body, '业务知识已保存'); if (result) setEdit(undefined); }} />}
     {remove && <Modal title="删除这条业务知识？" subtitle={`「${remove.title}」将从工作空间移除，历史任务仍会保留。`} onClose={() => setRemove(undefined)}><p className="muted">如果只是暂时不用，可以关闭它的启用开关。也可以先在设置中导出备份。</p><div className="modal-actions"><Button variant="secondary" onClick={() => setRemove(undefined)}>取消</Button><Button variant="danger" busy={busy} onClick={async () => { if (await perform('DELETE', `/knowledge/${remove.id}`, undefined, '知识条目已删除')) setRemove(undefined); }}>确认删除</Button></div></Modal>}
+    {showPlaybookModal && <Modal title="⚡ 载入预置实战行业话术包" subtitle="精选一线销冠与客服打磨的标准问答库与 SOP，一键注入知识库。" onClose={() => setShowPlaybookModal(false)}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxHeight: '55vh', overflowY: 'auto' }}>
+        {presetPacks.map(pack => (
+          <div key={pack.id} style={{ padding: '12px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.02)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <strong>{pack.name}</strong>
+                <span style={{ fontSize: '11px', padding: '1px 6px', borderRadius: '4px', background: 'rgba(56, 189, 248, 0.2)', color: '#38bdf8' }}>{pack.category}</span>
+              </div>
+              <Button busy={busy} onClick={() => void installPack(pack.id)}><Sparkles size={14} />装载 ({pack.items.length}条)</Button>
+            </div>
+            <p style={{ fontSize: '12px', color: 'var(--muted, #aaa)', margin: '4px 0 8px' }}>{pack.description}</p>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+              {pack.items.map((it, idx) => (
+                <span key={idx} style={{ fontSize: '11px', padding: '2px 6px', borderRadius: '4px', background: 'rgba(255,255,255,0.05)', color: '#ccc' }}>📌 {it.title}</span>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="modal-actions"><Button variant="secondary" onClick={() => setShowPlaybookModal(false)}>关闭</Button></div>
+    </Modal>}
+    {showExtractModal && <Modal title="🧠 金牌聊天记录 AI 萃取器" subtitle="粘贴销冠过往成交对话，AI 自动拆解提炼高转化问答与 SOP 指引。" onClose={() => setShowExtractModal(false)}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        <Field label="历史聊天记录文本" hint="支持「客户：... 销售：...」格式">
+          <textarea rows={6} placeholder="粘贴聊天记录..." value={extractTranscript} onChange={e => setExtractTranscript(e.target.value)} />
+        </Field>
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <Button variant="secondary" busy={busy} onClick={() => void runExtract(false)}><Sparkles size={15} />智能分析</Button>
+          <Button busy={busy} onClick={() => void runExtract(true)}><Check size={15} />萃取并保存到知识库</Button>
+        </div>
+        {extractResult && (
+          <div style={{ marginTop: '10px', padding: '12px', borderRadius: '6px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', fontSize: '12px' }}>
+            <p style={{ margin: '0 0 4px', color: '#38bdf8' }}><strong>核心异议：</strong>{extractResult.objection}</p>
+            <p style={{ margin: '0 0 8px' }}><strong>应对策略：</strong>{extractResult.strategy}</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              {extractResult.suggestedQa.map((qa, i) => (
+                <div key={i} style={{ padding: '6px 8px', borderRadius: '4px', background: 'rgba(0,0,0,0.2)' }}>
+                  <div style={{ color: '#fbbf24' }}>问：{qa.question}</div>
+                  <div style={{ color: '#cbd5e1' }}>答：{qa.answer}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+      <div className="modal-actions"><Button variant="secondary" onClick={() => setShowExtractModal(false)}>取消</Button></div>
+    </Modal>}
   </>;
 }
 function KnowledgeEditor({ item, busy, onClose, onSave }: { item?: Knowledge; busy: boolean; onClose: () => void; onSave: (data: unknown) => Promise<void> }) {
@@ -32,7 +113,7 @@ function WorkflowEditor({ item, busy, onClose, onSave }: { item?: Workflow; busy
   return <Modal title={item ? '编辑工作流程' : '创建工作流程'} subtitle="明确工作目标、回复语气和不能做出的承诺。" onClose={onClose}><form onSubmit={e => { e.preventDefault(); void onSave(form); }}><div className="form-row"><Field label="流程名称"><input required maxLength={200} value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="例如：售前咨询接待" /></Field><Field label="业务场景"><select value={form.scenario} onChange={e => setForm({ ...form, scenario: e.target.value as Workflow['scenario'] })}>{Object.entries(scenarios).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></Field></div><Field label="一句话说明"><input maxLength={500} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="这个流程帮你完成什么？" /></Field><Field label="工作指令"><textarea required rows={7} maxLength={20000} value={form.instructions} onChange={e => setForm({ ...form, instructions: e.target.value })} placeholder="例如：先确认客户需求，再依据知识库回复；缺少信息时主动提问；不编造价格与交付时间。" /></Field><Field label="常用开场白（可选）"><input maxLength={500} value={form.greeting} onChange={e => setForm({ ...form, greeting: e.target.value })} placeholder="你好，感谢你的咨询。" /></Field><div className="modal-actions"><Button type="button" variant="secondary" onClick={onClose}>取消</Button><Button type="submit" busy={busy}>保存流程</Button></div></form></Modal>;
 }
 
-const actionNames: Record<string, string> = { seeded: '初始化示例', attachment_draft_created: '保存附件回复草稿', task_created: '创建任务', task_updated: '编辑任务', task_generated: '生成回复', task_approved: '审核草稿', task_completed: '交接草稿', task_archived: '归档任务', task_restored: '恢复任务', settings_updated: '更新设置', knowledge_created: '添加知识', knowledge_updated: '更新知识', knowledge_deleted: '删除知识', workflows_created: '创建流程', workflows_updated: '更新流程', workflows_deleted: '删除流程', learning_settings: '更新学习候选设置', learning_collected: '收集学习候选', learning_approved: '审核并启用学习候选', learning_rejected: '拒绝学习候选', imported: '恢复备份' };
+const actionNames: Record<string, string> = { seeded: '初始化示例', attachment_draft_created: '保存附件回复草稿', task_created: '创建任务', task_updated: '编辑任务', task_generated: '生成回复', task_approved: '审核草稿', task_completed: '交接草稿', task_archived: '归档任务', task_restored: '恢复任务', settings_updated: '更新设置', knowledge_created: '添加知识', knowledge_updated: '更新知识', knowledge_deleted: '删除知识', workflows_created: '创建流程', workflows_updated: '更新流程', workflows_deleted: '删除流程', learning_settings: '更新学习候选设置', learning_collected: '收集学习候选', learning_approved: '审核并启用学习候选', learning_rejected: '拒绝学习候选', imported: '恢复备份', playbook_installed: '安装实战话术包', playbook_extracted: '萃取实战聊天话术', lead_recorded: '沉淀私域线索', lead_qualified: '意向智能识别' };
 export function AuditPage({ state }: PageProps) {
   const [filter, setFilter] = useState('all');
   const events = state.events.filter(event => filter === 'all' || (filter === 'tasks' ? event.action.startsWith('task_') : !event.action.startsWith('task_')));

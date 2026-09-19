@@ -26,5 +26,6 @@ export interface DesktopRepliesDependencies {
   createSurface(targetId: string, config: DesktopReplyConfig): Promise<DesktopChatSurface>;
   context(config: DesktopReplyConfig): Promise<{ knowledge: string; instructions: string }>;
   generate(input: ReplyGenerationInput, signal: AbortSignal): Promise<string>;
+  onIncomingLead?: (conversationName: string, text: string) => Promise<unknown> | void;
   now?: () => number; setTimer?: typeof setTimeout; clearTimer?: typeof clearTimeout;
 }

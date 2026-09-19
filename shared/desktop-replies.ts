@@ -11,6 +11,7 @@ export interface DesktopReplyConfig {
   conversations: ReplyConversation[]; layout: ReplyLayout; mode: 'manual' | 'auto';
   /** Legacy persisted `windows` remains readable so the UI can explicitly migrate it to USB before saving. */
   pollSeconds: number; maxRepliesPerHour: number; knowledgeIds: string[]; workflowId: string; inputBackend?: 'windows' | 'usb';
+  humanDelay?: boolean; splitBubbles?: boolean;
 }
 export interface VisibleChatMessage { direction: 'incoming' | 'outgoing'; text: string; stamp: string }
 export interface ChatObservation {

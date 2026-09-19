@@ -5,8 +5,12 @@ export interface Workflow { id: string; name: string; scenario: Scenario; descri
 export interface Task { id: string; title: string; scenario: Scenario; workflowId: string; input: string; reply: string; rationale: string; knowledgeIds: string[]; status: TaskStatus; mode: 'demo' | 'live'; sourceName: string; createdAt: string; updatedAt: string }
 export interface AuditEvent { id: string; taskId?: string; action: string; detail: string; createdAt: string }
 export interface ProviderSettings { baseUrl: string; model: string; temperature: number; hasKey: boolean }
+export interface CustomerLead { id: string; conversationName: string; intent: 'high' | 'medium' | 'low' | 'complaint'; phone?: string; wechatId?: string; budget?: string; painPoint?: string; nextStep?: string; notes?: string; updatedAt: string }
+export interface PlaybookPack { id: string; category: string; name: string; description: string; items: Array<{ title: string; content: string; tags: string[] }>; workflow?: { name: string; instructions: string; greeting: string } }
+export interface ChatExtractResult { title: string; objection: string; strategy: string; suggestedQa: Array<{ title: string; question: string; answer: string; tags: string[] }>; workflowGuidelines: string[] }
+
 export interface Preferences { workspaceName: string; operatorName: string; collectApprovedLearning?: boolean }
-export interface AppState { schemaVersion: number; knowledge: Knowledge[]; workflows: Workflow[]; tasks: Task[]; events: AuditEvent[]; provider: ProviderSettings; preferences: Preferences; learning?: import('./learning').LearningCandidate[] }
+export interface AppState { schemaVersion: number; knowledge: Knowledge[]; workflows: Workflow[]; tasks: Task[]; events: AuditEvent[]; provider: ProviderSettings; preferences: Preferences; learning?: import('./learning').LearningCandidate[]; leads?: CustomerLead[] }
 export interface ApiRequest { method: 'GET' | 'POST' | 'PUT' | 'DELETE'; path: string; body?: unknown }
 export interface CaptureSource { id: string; name: string; thumbnail: string }
 export interface CaptureResult { sourceId: string; sourceName: string; image: string; width: number; height: number }

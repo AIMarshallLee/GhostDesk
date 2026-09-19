@@ -24,6 +24,7 @@ export async function registerDesktopReplies(options: {
   getGeminiCredentials(): Promise<GeminiCredentials>;
   getGeminiSummary(): Promise<{ baseUrl: string; model: string; hasKey: boolean }>;
   getWorkspace(): Promise<AppState>;
+  recordLead?: (conversationName: string, text: string) => Promise<unknown>;
 }) {
   let fixture: Awaited<ReturnType<typeof createDesktopRepliesFixture>> | undefined;
   let model: Pick<ReturnType<typeof createReplyModel>, 'readScene' | 'readIme' | 'generate'> | undefined;
@@ -37,6 +38,9 @@ export async function registerDesktopReplies(options: {
   };
   const controller = await createDesktopReplies({
     directory: options.directory,
+    onIncomingLead: options.recordLead ? async (name, text) => {
+      try { await options.recordLead!(name, text); } catch { /* best effort */ }
+    } : undefined,
     async createSurface(id, config) {
       const target = targetFor(id);
       const gemini = config.modelProtocol === 'gemini-native' ? await options.getGeminiCredentials() : undefined;

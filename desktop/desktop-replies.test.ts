@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { defaultReplyLayout, type ChatObservation, type DesktopReplyConfig, type ReplyConversation } from '../shared/desktop-replies';
-import { createDesktopReplies } from './desktop-replies';
+import { createDesktopReplies, splitReplyBubbles } from './desktop-replies';
 
 const convo = (id: string, name: string): ReplyConversation => ({ id, name, enabled: true });
 const message = (direction: 'incoming' | 'outgoing', text: string, stamp: string) => ({ direction, text, stamp });
@@ -92,4 +92,63 @@ test('重启把 sending 转 uncertain 并保持暂停', async (t) => {
   await writeFile(join(directory, 'desktop-replies.json'), JSON.stringify(saved));
   const api = await createDesktopReplies({ directory, createSurface: async () => { throw new Error('unused'); }, context: async () => ({ knowledge: '', instructions: '' }), generate: async () => 'unused' });
   assert.equal(api.state().status, 'paused'); assert.equal(api.state().jobs[0].status, 'uncertain'); await api.close();
+});
+
+test('splitReplyBubbles splits long multi-sentence text into natural chat bubbles', () => {
+  const shortText = '您好，在的！';
+  assert.deepEqual(splitReplyBubbles(shortText), [shortText]);
+
+  const longText = '特别理解您的顾虑！很多老客户一开始也有类似想法。但实际使用后一人能管十个窗口，当月即可回本。';
+  const bubbles = splitReplyBubbles(longText);
+  assert.ok(bubbles.length >= 2);
+  assert.equal(bubbles.join(''), longText);
+});
+
+test('splitBubbles 开启时将长消息分段发送并触发 onIncomingLead', async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), 'flowdesk-replies-split-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const a = convo('a', 'A');
+  const observations = new Map<string, ChatObservation>();
+  const sent: string[] = [];
+  const leads: Array<{ name: string; text: string }> = [];
+
+  const longReply = '特别理解您的顾虑！很多老客户一开始也有类似想法。但实际使用后一人能管十个窗口，当月即可回本。';
+  const api = await createDesktopReplies({
+    directory,
+    createSurface: async () => ({
+      target: { id: 't', name: 'T', kind: 'test' },
+      open: async () => {},
+      close() {},
+      observe: async (c) => structuredClone(observations.get(c.id)!),
+      deliver: async (c, expected, reply) => {
+        sent.push(reply);
+        const next = { ...expected, messages: [...expected.messages, message('outgoing', reply, `sent-${Date.now()}`)] };
+        observations.set(c.id, next);
+        return { status: 'visually_confirmed', observation: next };
+      },
+    }),
+    context: async () => ({ knowledge: 'k', instructions: 'i' }),
+    generate: async () => longReply,
+    onIncomingLead: (name, text) => { leads.push({ name, text }); },
+  });
+
+  const cfg: DesktopReplyConfig = {
+    ...config([a]),
+    splitBubbles: true,
+    humanDelay: true,
+  };
+  await api.saveConfig(cfg);
+
+  observations.set('a', { conversationName: 'A', messages: [message('incoming', 'base', '1')], composerText: '', observedAt: '1' });
+  await api.start({ targetId: 't', allowModel: true });
+  await api.waitForIdle();
+
+  observations.set('a', { conversationName: 'A', messages: [message('incoming', 'base', '1'), message('incoming', '请问能便宜点吗？预算有限', '2')], composerText: '', observedAt: '2' });
+  await api.tickNow();
+
+  assert.ok(sent.length >= 2, `Expected at least 2 bubbles sent, got ${sent.length}`);
+  assert.equal(leads.length, 1);
+  assert.equal(leads[0].name, 'A');
+  assert.ok(leads[0].text.includes('便宜点'));
+  await api.close();
 });

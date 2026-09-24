@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld('flowdesk', {
     takeover: (id: string, enabled: boolean) => ipcRenderer.invoke('flowdesk:replies:takeover', id, enabled),
     copy: (id: string) => ipcRenderer.invoke('flowdesk:replies:copy', id),
     resolve: (id: string) => ipcRenderer.invoke('flowdesk:replies:resolve', id),
+    selectCandidate: (id: string, candidateId: 'quick' | 'warm' | 'conversion') => ipcRenderer.invoke('flowdesk:replies:select-candidate', id, candidateId),
     preview: (id: string) => ipcRenderer.invoke('flowdesk:replies:preview', id),
     openTestTarget: () => ipcRenderer.invoke('flowdesk:replies:open-test-target'),
     provider: (protocol?: import('../shared/desktop-replies').DesktopReplyConfig['modelProtocol']) => ipcRenderer.invoke('flowdesk:replies:provider', protocol),

@@ -152,3 +152,47 @@ test('splitBubbles 开启时将长消息分段发送并触发 onIncomingLead', a
   assert.ok(leads[0].text.includes('便宜点'));
   await api.close();
 });
+
+test('manual 模式下生成心理意图诊断与三档候选话术，并支持 selectCandidate 切换', async (t) => {
+  const a = convo('a', 'A');
+  const f = await fixture(config([a], 'manual'));
+  t.after(f.cleanup);
+
+  f.set(a, [message('incoming', 'old', '1')]);
+  await f.api.start({ targetId: 't', allowModel: true });
+  await f.api.waitForIdle();
+
+  f.set(a, [message('incoming', 'old', '1'), message('incoming', '这个有点贵啊，有没有优惠？', '2')]);
+  await f.api.tickNow();
+
+  const state = f.api.state();
+  const job = state.jobs[0];
+  assert.ok(job, 'Expected job to be created');
+  assert.equal(job.status, 'ready');
+
+  // Verify psychology diagnostic
+  assert.ok(job.psychology, 'Expected psychology diagnostic to be populated');
+  assert.equal(job.psychology.coreNeed, 'price');
+  assert.equal(job.psychology.riskLevel, 'cautious');
+
+  // Verify candidates
+  assert.ok(job.candidates && job.candidates.length === 3, 'Expected 3 candidate postures');
+  const quick = job.candidates.find(c => c.id === 'quick');
+  const warm = job.candidates.find(c => c.id === 'warm');
+  const conversion = job.candidates.find(c => c.id === 'conversion');
+  assert.ok(quick && warm && conversion);
+
+  // Default selected is warm
+  assert.equal(job.selectedCandidateId, warm.id);
+
+  // Test selecting conversion candidate
+  const updatedState = await f.api.selectCandidate(job.id, conversion.id);
+  const updatedJob = updatedState.jobs.find(j => j.id === job.id);
+  assert.equal(updatedJob?.selectedCandidateId, conversion.id);
+  assert.equal(updatedJob?.reply, conversion.text);
+
+  // Verify state persists selection
+  const currentJob = f.api.state().jobs.find(j => j.id === job.id);
+  assert.equal(currentJob?.selectedCandidateId, conversion.id);
+  assert.equal(currentJob?.reply, conversion.text);
+});

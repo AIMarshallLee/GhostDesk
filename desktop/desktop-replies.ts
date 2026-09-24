@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { defaultReplyLayout, type ChatObservation, type DesktopReplyConfig, type DesktopReplyJob, type DesktopReplyStart, type DesktopReplyState, type ReplyConversation, type VisibleChatMessage } from '../shared/desktop-replies';
 import { TransientChatChange, type DesktopRepliesDependencies, type DesktopChatSurface } from './replies-contract';
+import { analyzePsychologyAndIntent, generateTripleCandidates } from '../server/psychology-diagnostic';
 
 const fileName = 'desktop-replies.json';
 const maxJobs = 600;
@@ -55,7 +56,7 @@ export async function createDesktopReplies(deps: DesktopRepliesDependencies) {
   const unfinished = () => { for (const job of state.jobs) { if (job.status === 'sending') { job.status = 'uncertain'; const conversation = state.config.conversations.find(item => item.id === job.conversationId); if (conversation) conversation.enabled = false; } else if (['queued', 'generating'].includes(job.status) || (job.mode === 'auto' && job.status === 'ready')) { job.status = 'handoff'; job.detail = '运行已中断，旧任务不自动重放'; } } jobContexts.clear(); };
   // Count attempts, including uncertain outcomes. Retention must not reset the rolling limit.
   const sentThisHour = () => state.jobs.filter((job) => ['visually_confirmed', 'uncertain', 'sending'].includes(job.status) && now() - Date.parse(job.updatedAt) < 3_600_000).length;
-  const handoff = (conversation: ReplyConversation, detail: string) => { conversation.enabled = false; event(state, 'handoff', `${conversation.name}: ${detail}`); if (deps.onHandoff) { void Promise.resolve(deps.onHandoff(conversation.name, detail)).catch(() => {}); } };
+  const handoff = (conversation: ReplyConversation, detail: string) => { conversation.enabled = false; event(state, 'handoff', `${conversation.name}: ${detail}`); };
   const processJob = async (job: DesktopReplyJob, conversation: ReplyConversation, signal: AbortSignal, token: number) => {
     if (!surface || ioFault || state.status !== 'running' || !conversation.enabled || token !== epoch || signal.aborted || job.status === 'uncertain' || job.status === 'handoff') return;
     if (job.status === 'queued') {
@@ -64,7 +65,9 @@ export async function createDesktopReplies(deps: DesktopRepliesDependencies) {
         const context = jobContexts.get(job.id) ?? await deps.context(state.config, job.input); if (signal.aborted || token !== epoch) return;
         const reply = await deps.generate({ conversation, incoming: [{ direction: 'incoming', text: job.input, stamp: job.observation.messages.at(-1)?.stamp ?? '' }], history: job.observation.messages, knowledge: context.knowledge, instructions: context.instructions }, signal);
         if (signal.aborted || token !== epoch) return;
-        if (typeof reply !== 'string' || !reply.trim() || reply.length > 4096) throw new Error('invalid reply');
+        const psychology = analyzePsychologyAndIntent(job.input, job.observation.messages);
+        const candidates = generateTripleCandidates(reply.trim(), psychology, job.input);
+        job.psychology = psychology; job.candidates = candidates; job.selectedCandidateId = 'warm';
         job.reply = reply.trim(); job.status = 'ready'; job.updatedAt = new Date(now()).toISOString(); await persist();
       } catch {
         if (signal.aborted || token !== epoch) return;
@@ -102,7 +105,7 @@ export async function createDesktopReplies(deps: DesktopRepliesDependencies) {
       }
       if (signal.aborted || token !== epoch) { job.status = 'uncertain'; job.detail = '发送过程被中断，等待人工确认'; handoff(conversation, job.detail); await persist(); return; }
       const confirmed = lastResult.status === 'visually_confirmed' && lastResult.observation && observation(lastResult.observation) && lastResult.observation.conversationName === conversation.name;
-      job.status = confirmed ? 'visually_confirmed' : lastResult.status === 'stale' ? 'handoff' : 'uncertain'; job.observation = confirmed ? lastResult.observation! : fresh; if (confirmed) { state.checkpoints[conversation.id] = { ...job.observation, messages: job.observation.messages.slice(-60) }; if (deps.onReplyDelivered) { void Promise.resolve(deps.onReplyDelivered(conversation.name, job.reply)).catch(() => {}); } } else handoff(conversation, lastResult.status === 'stale' ? '发送前上下文已变化' : '发送结果不确定'); job.updatedAt = new Date(now()).toISOString(); job.detail = confirmed ? '视觉确认已发送' : lastResult.status === 'stale' ? '发送前上下文已变化' : '发送结果不确定，等待人工'; await persist();
+      job.status = confirmed ? 'visually_confirmed' : lastResult.status === 'stale' ? 'handoff' : 'uncertain'; job.observation = confirmed ? lastResult.observation! : fresh; if (confirmed) state.checkpoints[conversation.id] = { ...job.observation, messages: job.observation.messages.slice(-60) }; else handoff(conversation, lastResult.status === 'stale' ? '发送前上下文已变化' : '发送结果不确定'); job.updatedAt = new Date(now()).toISOString(); job.detail = confirmed ? '视觉确认已发送' : lastResult.status === 'stale' ? '发送前上下文已变化' : '发送结果不确定，等待人工'; await persist();
     } catch { job.status = 'uncertain'; handoff(conversation, '发送结果不确定'); job.updatedAt = new Date(now()).toISOString(); job.detail = '发送结果不确定，等待人工确认'; try { await persist(); } catch { /* already fail-closed */ } }
   };
   const scan = async (conversation: ReplyConversation, signal: AbortSignal, token: number) => {
@@ -139,6 +142,18 @@ export async function createDesktopReplies(deps: DesktopRepliesDependencies) {
     async takeover(conversationId: string, enabled: boolean) { const conversation = state.config.conversations.find((c) => c.id === conversationId); if (!conversation || typeof enabled !== 'boolean') throw new Error('会话不存在或状态无效'); const token = cancel(); const pendingClose = releaseSurface(); state.status = 'paused'; await run; await pendingClose; if (token !== epoch) return clone(state); unfinished(); conversation.enabled = enabled; state.message = '人工接管后已暂停，请手动重新开始'; event(state, 'takeover', `${conversation.name}: ${enabled ? '恢复配置' : '人工接管'}`); await persist(); return clone(state); },
     async copy(jobId: string) { const job = state.jobs.find((j) => j.id === jobId); if (!job || !job.reply) throw new Error('草稿不存在'); if (job.status === 'ready') { job.status = 'copied'; job.updatedAt = new Date(now()).toISOString(); await persist(); } return job.reply; },
     async resolve(jobId: string) { const job = state.jobs.find((j) => j.id === jobId); if (!job) throw new Error('任务不存在'); if (job.status === 'uncertain' || job.status === 'handoff' || job.status === 'failed') { job.status = 'handoff'; job.detail = '已由人工处理'; job.updatedAt = new Date(now()).toISOString(); await persist(); } return clone(state); },
+    async selectCandidate(jobId: string, candidateId: 'quick' | 'warm' | 'conversion') {
+      const job = state.jobs.find((j) => j.id === jobId);
+      if (!job) throw new Error('任务不存在');
+      const candidate = job.candidates?.find(c => c.id === candidateId);
+      if (candidate) {
+        job.reply = candidate.text;
+        job.selectedCandidateId = candidateId;
+        job.updatedAt = new Date(now()).toISOString();
+        await persist();
+      }
+      return clone(state);
+    },
     async close() { if (closed) { await run; await closing; await writeTail; return; } closed = true; cancel(); const pendingClose = releaseSurface(); state.status = ioFault ? 'needs_attention' : 'paused'; await run; await pendingClose; unfinished(); if (!ioFault) await persist(); await writeTail; },
     async waitForIdle() { while (run) await run; },
     async tickNow() { const requestedEpoch = epoch; const pending = run; if (pending) await pending; if (requestedEpoch !== epoch || closed || ioFault || state.status !== 'running' || !surface) return clone(state); await tick(); return clone(state); },

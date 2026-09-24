@@ -6,6 +6,7 @@ import type { SandboxState } from '../shared/autopilot.ts';
 import { collectApprovedLocally, learningFingerprint, learningSources, localCandidate, requireCurrentSources, validateLearning } from './learning';
 import { createReplyModel } from '../desktop/reply-model';
 import { PRESET_PLAYBOOKS, extractPlaybookFromChat, qualifyLeadFromText } from './playbook-presets.ts';
+import { analyzePsychologyAndIntent, generateTripleCandidates } from './psychology-diagnostic.ts';
 import type { CustomerLead } from '../shared/types.ts';
 import { createKnowledgeWorkbench, knowledgeAvailable, knowledgeFingerprint, knowledgeMetadataValid, readKnowledgeDraft, retrieveKnowledge } from './knowledge';
 import { parseKnowledgeImportIsolated } from './knowledge-parser';
@@ -239,6 +240,21 @@ export async function createService({ dataDir, secrets, fetchImpl = fetch, befor
         else state.leads.unshift(lead);
       });
       return { ok: true, lead };
+    }
+    if (method === 'POST' && path === '/psychology/analyze') {
+      const text = string(body.text, '消息内容', 10000);
+      const history = Array.isArray(body.history) ? body.history : [];
+      const diagnostic = analyzePsychologyAndIntent(text, history);
+      return { ok: true, diagnostic };
+    }
+    if (method === 'POST' && path === '/psychology/candidates') {
+      const baseReply = string(body.baseReply, '基础回复', 10000);
+      const customerInput = string(body.customerInput, '客户消息', 10000);
+      const diagnostic = body.diagnostic && typeof body.diagnostic === 'object'
+        ? (body.diagnostic as any)
+        : analyzePsychologyAndIntent(customerInput);
+      const candidates = generateTripleCandidates(baseReply, diagnostic, customerInput);
+      return { ok: true, candidates };
     }
     if (method === 'PUT' && path === '/learning/settings') {
       if (typeof body.collectApprovedLearning !== 'boolean') throw new ApiError(400, '自动收集设置无效');

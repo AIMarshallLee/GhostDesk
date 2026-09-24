@@ -8,6 +8,19 @@ export interface ProviderSettings { baseUrl: string; model: string; temperature:
 export interface CustomerLead { id: string; conversationName: string; intent: 'high' | 'medium' | 'low' | 'complaint'; phone?: string; wechatId?: string; budget?: string; painPoint?: string; nextStep?: string; notes?: string; updatedAt: string }
 export interface PlaybookPack { id: string; category: string; name: string; description: string; items: Array<{ title: string; content: string; tags: string[] }>; workflow?: { name: string; instructions: string; greeting: string } }
 export interface ChatExtractResult { title: string; objection: string; strategy: string; suggestedQa: Array<{ title: string; question: string; answer: string; tags: string[] }>; workflowGuidelines: string[] }
+export interface PsychologyDiagnostic {
+  underlyingIntent: string;
+  riskLevel: 'safe' | 'cautious' | 'high_risk';
+  coreNeed: 'price' | 'trust' | 'speed' | 'service' | 'reassurance' | 'other';
+  suggestedAction: string;
+  confidence: number;
+}
+export interface CandidateDraft {
+  id: 'quick' | 'warm' | 'conversion';
+  label: string;
+  text: string;
+  rationale?: string;
+}
 
 export interface Preferences { workspaceName: string; operatorName: string; collectApprovedLearning?: boolean }
 export interface AppState { schemaVersion: number; knowledge: Knowledge[]; workflows: Workflow[]; tasks: Task[]; events: AuditEvent[]; provider: ProviderSettings; preferences: Preferences; learning?: import('./learning').LearningCandidate[]; leads?: CustomerLead[] }

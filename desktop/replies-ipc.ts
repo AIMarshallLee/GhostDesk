@@ -26,8 +26,6 @@ export async function registerDesktopReplies(options: {
   getGeminiSummary(): Promise<{ baseUrl: string; model: string; hasKey: boolean }>;
   getWorkspace(): Promise<AppState>;
   recordLead?: (conversationName: string, text: string) => Promise<unknown>;
-  onReplyDelivered?: (conversationName: string, reply: string) => Promise<unknown> | void;
-  onHandoff?: (conversationName: string, detail: string) => Promise<unknown> | void;
 }) {
   let fixture: Awaited<ReturnType<typeof createDesktopRepliesFixture>> | undefined;
   let model: Pick<ReturnType<typeof createReplyModel>, 'readScene' | 'readIme' | 'generate'> | undefined;
@@ -43,12 +41,6 @@ export async function registerDesktopReplies(options: {
     directory: options.directory,
     onIncomingLead: options.recordLead ? async (name, text) => {
       try { await options.recordLead!(name, text); } catch { /* best effort */ }
-    } : undefined,
-    onReplyDelivered: options.onReplyDelivered ? async (name, reply) => {
-      try { await options.onReplyDelivered!(name, reply); } catch { /* best effort */ }
-    } : undefined,
-    onHandoff: options.onHandoff ? async (name, detail) => {
-      try { await options.onHandoff!(name, detail); } catch { /* best effort */ }
     } : undefined,
     async createSurface(id, config) {
       const target = targetFor(id);
@@ -100,6 +92,7 @@ export async function registerDesktopReplies(options: {
   handle('takeover', (id, enabled) => { startEpoch++; return mutate(() => controller.takeover(id, enabled)); });
   handle('copy', async id => { await clipboard.writeText(await controller.copy(id)); });
   handle('resolve', id => mutate(() => controller.resolve(id)));
+  handle('select-candidate', (id, candidateId) => mutate(() => controller.selectCandidate(id, candidateId)));
   handle('open-test-target', () => { idle(); return mutate(async () => {
     if (!fixture || fixture.isClosed()) fixture = await createDesktopRepliesFixture();
     return fixture.driver.target;
@@ -111,7 +104,7 @@ export async function registerDesktopReplies(options: {
     return { image: `data:image/png;base64,${image.base64}`, width: image.width, height: image.height };
   }); });
   handle('provider', async (protocol?: ReplyModelProtocol) => {
-    if (protocol !== undefined && !['gemini-native', 'openai-vision'].includes(protocol)) throw new Error('模型协议无效。');
+    if (protocol !== undefined && !['gemini-native', 'openai-vision', 'deepseek'].includes(protocol)) throw new Error('模型协议无效。');
     const native = (protocol ?? controller.state().config.modelProtocol) === 'gemini-native';
     if (native) {
       const summary = await options.getGeminiSummary();

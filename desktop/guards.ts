@@ -2,8 +2,8 @@ import type { ApiRequest, CropRect } from '../shared/types.ts';
 import { isSandboxRequest } from '../shared/autopilot.ts';
 
 const API_PATHS: Record<ApiRequest['method'], readonly string[]> = {
-  GET: ['/health', '/state', '/export', '/playbooks/presets'],
-  POST: ['/import', '/knowledge', '/workflows', '/tasks', '/provider/test', '/learning/collect', '/knowledge/import/preview', '/knowledge/import/commit', '/knowledge/review', '/knowledge/search', '/knowledge/evaluate', '/playbooks/install', '/playbooks/extract'],
+  GET: ['/health', '/state', '/export', '/playbooks/presets', '/license/status'],
+  POST: ['/import', '/knowledge', '/workflows', '/tasks', '/provider/test', '/learning/collect', '/knowledge/import/preview', '/knowledge/import/commit', '/knowledge/review', '/knowledge/search', '/knowledge/evaluate', '/playbooks/install', '/playbooks/extract', '/copilot/reply', '/psychology/candidates', '/leads/qualify', '/license/activate'],
   PUT: ['/settings', '/learning/settings'],
   DELETE: ['/knowledge/', '/workflows/', '/provider/key']
 };

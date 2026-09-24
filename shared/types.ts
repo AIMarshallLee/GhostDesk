@@ -22,6 +22,16 @@ export interface CandidateDraft {
   rationale?: string;
 }
 
+export interface LicenseStatus {
+  machineId: string;
+  licensed: boolean;
+  expiry?: string;
+  plan?: string;
+  trialUsed: number;
+  trialLimit: number;
+  trialRemaining: number;
+}
+
 export interface Preferences { workspaceName: string; operatorName: string; collectApprovedLearning?: boolean }
 export interface AppState { schemaVersion: number; knowledge: Knowledge[]; workflows: Workflow[]; tasks: Task[]; events: AuditEvent[]; provider: ProviderSettings; preferences: Preferences; learning?: import('./learning').LearningCandidate[]; leads?: CustomerLead[] }
 export interface ApiRequest { method: 'GET' | 'POST' | 'PUT' | 'DELETE'; path: string; body?: unknown }

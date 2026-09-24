@@ -10,6 +10,7 @@ import { analyzePsychologyAndIntent, generateTripleCandidates } from './psycholo
 import type { CustomerLead } from '../shared/types.ts';
 import { createKnowledgeWorkbench, knowledgeAvailable, knowledgeFingerprint, knowledgeMetadataValid, readKnowledgeDraft, retrieveKnowledge } from './knowledge';
 import { parseKnowledgeImportIsolated } from './knowledge-parser';
+import { LicenseManager } from './license.ts';
 
 type SecretStore = { get(): Promise<string | undefined>; set(key: string): Promise<void>; delete(): Promise<void> };
 type ServiceOptions = { dataDir: string; secrets?: SecretStore; fetchImpl?: typeof fetch; beforeLiveModel?: () => Promise<void>; knowledgeWorkerPath?: string };
@@ -78,6 +79,8 @@ export async function createService({ dataDir, secrets, fetchImpl = fetch, befor
   const setKey = async (value: string) => { if (secrets) await secrets.set(value); else memoryKey = value; };
   const deleteKey = async () => { if (secrets) await secrets.delete(); else memoryKey = undefined; };
   await mkdir(dataDir, { recursive: true });
+  const license = new LicenseManager(dataDir);
+  await license.init();
   let state: AppState;
   const generating = new Set<string>();
   let writeTail: Promise<void> = Promise.resolve();
@@ -101,6 +104,7 @@ export async function createService({ dataDir, secrets, fetchImpl = fetch, befor
     const knowledge = includeKnowledge ? relatedKnowledge(t.input, t.scenario) : []; t.knowledgeIds = knowledge.map(k => k.id);
     const knowledgeVersions = knowledge.map(k => ({ id: k.id, fingerprint: knowledgeFingerprint(k), updatedAt: k.updatedAt }));
     if (mode === 'demo') { t.reply = `【演示草稿】已根据“${t.input.slice(0, 80)}”整理回复：您好，已收到您的信息。我会先核对相关情况，再向您说明下一步处理方式。`; t.rationale = `演示模式：确定性本地草稿；引用 ${knowledge.length} 条已启用相关知识，需人工审核后再使用。`; t.mode = mode; return; }
+    try { license.consumeQuota(); } catch (err) { throw new ApiError(402, (err as Error).message); }
     await beforeLiveModel?.();
     const apiKey = await key(); const url = providerUrl(state.provider.baseUrl);
     if (!apiKey && !['localhost', '127.0.0.1', '::1'].includes(url.hostname)) throw new ApiError(400, '请先配置 API 密钥');
@@ -257,6 +261,7 @@ export async function createService({ dataDir, secrets, fetchImpl = fetch, befor
       return { ok: true, candidates };
     }
     if (method === 'POST' && path === '/copilot/reply') {
+      try { license.consumeQuota(); } catch (err) { throw new ApiError(402, (err as Error).message); }
       const text = string(body.text, '消息内容', 10000);
       const history = Array.isArray(body.history) ? body.history : [];
       const diagnostic = analyzePsychologyAndIntent(text, history);
@@ -312,6 +317,7 @@ export async function createService({ dataDir, secrets, fetchImpl = fetch, befor
         candidates,
         baseReply,
         lead: (lead.phone || lead.budget || lead.painPoint) ? lead : undefined,
+        license: license.getStatus(),
       };
 
     }
@@ -371,6 +377,18 @@ export async function createService({ dataDir, secrets, fetchImpl = fetch, befor
       });
       return candidate;
     }
+    if (method === 'GET' && path === '/license/status') {
+      return { ok: true, status: license.getStatus() };
+    }
+    if (method === 'POST' && path === '/license/activate') {
+      const licenseKey = string(body.licenseKey, '授权卡密', 500);
+      try {
+        const res = await license.activate(licenseKey);
+        return res;
+      } catch (err) {
+        throw new ApiError(400, (err as Error).message);
+      }
+    }
     if (method === 'GET' && path === '/state') { state.provider.hasKey = Boolean(await key()); return structuredClone(state); }
     if (method === 'GET' && path === '/export') { const exported = structuredClone(state); exported.provider.hasKey = false; return exported; }
     if (method === 'POST' && path === '/import') { if (generating.size) throw new ApiError(409, '有任务正在生成，不能导入'); const imported = validateState(body.data); const old = structuredClone(state); await writeFile(`${stateFile}.backup`, JSON.stringify(old, null, 2), 'utf8'); try { if (imported.provider.baseUrl !== old.provider.baseUrl) await deleteKey(); state = imported; state.provider.hasKey = Boolean(await key()); await persist(); } catch (e) { state = old; throw e; } return state; }
@@ -423,6 +441,7 @@ export async function createService({ dataDir, secrets, fetchImpl = fetch, befor
     throw new ApiError(404, '接口不存在');
   }
   return { request,
+    licenseManager: license,
     // Main-process capability: only a verified media result can reach this entry point.
     async recordAttachmentDraft(input: { title: string; input: string; reply: string; knowledgeIds: string[]; sourceName: string }) {
       const title = string(input.title, '任务标题', 200); const text = string(input.input, '附件提取内容');

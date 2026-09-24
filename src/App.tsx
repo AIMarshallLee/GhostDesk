@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { LayoutDashboard, ListTodo, ScanLine, BookOpen, Workflow as WorkflowIcon, History, Settings, Plus, Search, Menu, X, AlertCircle, CheckCircle2, ArrowUpRight, Monitor, PanelLeftClose, LoaderCircle, Bot, MessagesSquare, Usb, Sparkles } from 'lucide-react';
-import type { ApiRequest, AppState, CaptureResult, Task } from '../shared/types';
+import { LayoutDashboard, ListTodo, ScanLine, BookOpen, Workflow as WorkflowIcon, History, Settings, Plus, Search, Menu, X, AlertCircle, CheckCircle2, ArrowUpRight, Monitor, PanelLeftClose, LoaderCircle, Bot, MessagesSquare, Usb, Sparkles, Crown } from 'lucide-react';
+import type { ApiRequest, AppState, CaptureResult, Task, LicenseStatus } from '../shared/types';
 import { api, getState, navigate } from './api';
 import { Button, Logo, Modal, Field, scenarios } from './components';
 import Landing from './Landing';
@@ -14,6 +14,7 @@ import HardwarePage from './Hardware';
 import AttachmentsPage from './Attachments';
 import WorkerStudio from './WorkerStudio';
 import Copilot from './Copilot';
+import LicenseModal from './LicenseModal';
 
 export interface PageProps {
   state: AppState;
@@ -52,17 +53,29 @@ export default function App() {
   const [mobileMenu, setMobileMenu] = useState(false);
   const [capture, setCapture] = useState<CaptureResult>();
   const [captureTaskId, setCaptureTaskId] = useState<string>();
+  const [license, setLicense] = useState<LicenseStatus | null>(null);
+  const [showLicenseModal, setShowLicenseModal] = useState(false);
   const notify = useCallback((message: string, error = false) => setToast({ message, error }), []);
   const refresh = useCallback(async () => { try { const result = await getState(); setState(result); setLoadError(''); } catch (e) { setLoadError((e as Error).message); } }, []);
   useEffect(() => { const fn = () => { const next = getRoute(); setRoute(next); setMobileMenu(false); if (next !== 'home') window.scrollTo(0, 0); }; fn(); window.addEventListener('hashchange', fn); return () => window.removeEventListener('hashchange', fn); }, []);
   useEffect(() => { if (route !== 'home' && !state) void refresh(); }, [route, state, refresh]);
+  useEffect(() => {
+    api<{ ok: boolean; status: LicenseStatus }>('GET', '/license/status')
+      .then(res => { if (res && res.status) setLicense(res.status); })
+      .catch(() => {});
+  }, []);
   useEffect(() => { if (!toast) return; const timer = setTimeout(() => setToast(undefined), toast.error ? 9000 : 4500); return () => clearTimeout(timer); }, [toast]);
   useEffect(() => { const fn = (e: KeyboardEvent) => { if ((e.metaKey || e.ctrlKey) && e.key === 'k' && route !== 'home') { e.preventDefault(); setShowSearch(true); } }; document.addEventListener('keydown', fn); return () => document.removeEventListener('keydown', fn); }, [route]);
   const perform: PageProps['perform'] = async (method, path, body, message) => {
     if (busy) return;
     setBusy(true);
     try { const result = await api(method, path, body); await refresh(); if (message) notify(message); return result as never; }
-    catch (e) { notify((e as Error).message, true); return undefined; }
+    catch (e) {
+      const msg = (e as Error).message || '';
+      if (msg.includes('试用额度已用尽')) setShowLicenseModal(true);
+      notify(msg, true);
+      return undefined;
+    }
     finally { setBusy(false); }
   };
   const props: PageProps | undefined = state ? { state, perform, busy, notify, newTask: () => setShowNew(true) } : undefined;
@@ -79,7 +92,7 @@ export default function App() {
       <div className="nav-label">核心功能</div><nav aria-label="工作台导航">{navItems.map(([key, label, Icon]) => <button key={key} className={`nav-item ${currentPage === key ? 'active' : ''}`} onClick={() => navigate(key)}><Icon size={18} /><span>{label}</span></button>)}</nav>
       <div className="sidebar-bottom"><div className="local-card"><span className="signal-dot" /><strong>物理防封 · 本地运行</strong><p>Pico 物理键鼠级仿真，安全零风控。</p></div><div className="sidebar-user"><span>{(state?.preferences.operatorName || '我').slice(0, 1)}</span><div><strong>{state?.preferences.operatorName || '工作空间主人'}</strong><small>FlowDesk 商业版</small></div><span className="online-dot" /></div></div>
     </aside>
-    <div className="workspace-main"><header className="app-topbar"><div className="breadcrumbs"><button className="icon-button mobile-toggle" onClick={() => setMobileMenu(true)} aria-label="打开导航"><Menu size={20} /></button><span>工作空间</span><span>/</span><strong>{title}</strong></div><div className="topbar-right"><button className="environment-tag" style={{ cursor: 'pointer', background: '#eff6ff', color: '#2563eb', fontWeight: 600, border: '1px solid #bfdbfe' }} onClick={() => navigate('copilot')} title="切换到 380px Jev 风格极轻侧边栏工作台"><Sparkles size={13} style={{ marginRight: 4 }} />⚡ 超轻私域副驾</button><button className="search-trigger" onClick={() => setShowSearch(true)}><Search size={16} /><span>搜索任务</span><kbd>Ctrl K</kbd></button><span className="environment-tag"><span />{window.flowdesk ? (/macintosh|mac os x/i.test(navigator.userAgent) ? 'macOS 桌面端' : 'Windows 桌面端') : '本地浏览器版'}</span><button className="icon-button" onClick={() => navigate('home')} aria-label="查看官网"><ArrowUpRight size={18} /></button></div></header>
+    <div className="workspace-main"><header className="app-topbar"><div className="breadcrumbs"><button className="icon-button mobile-toggle" onClick={() => setMobileMenu(true)} aria-label="打开导航"><Menu size={20} /></button><span>工作空间</span><span>/</span><strong>{title}</strong></div><div className="topbar-right"><button className="environment-tag" style={{ cursor: 'pointer', background: license?.licensed ? '#ecfdf5' : '#fef3c7', color: license?.licensed ? '#059669' : '#d97706', border: `1px solid ${license?.licensed ? '#a7f3d0' : '#fde68a'}`, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }} onClick={() => setShowLicenseModal(true)} title="点击查看授权状态与卡密激活"><Crown size={13} color={license?.licensed ? '#059669' : '#d97706'} /><span>{license?.licensed ? '👑 商业版' : `试用余 ${license?.trialRemaining ?? 0} 次`}</span></button><button className="environment-tag" style={{ cursor: 'pointer', background: '#eff6ff', color: '#2563eb', fontWeight: 600, border: '1px solid #bfdbfe' }} onClick={() => navigate('copilot')} title="切换到 380px Jev 风格极轻侧边栏工作台"><Sparkles size={13} style={{ marginRight: 4 }} />⚡ 超轻私域副驾</button><button className="search-trigger" onClick={() => setShowSearch(true)}><Search size={16} /><span>搜索任务</span><kbd>Ctrl K</kbd></button><span className="environment-tag"><span />{window.flowdesk ? (/macintosh|mac os x/i.test(navigator.userAgent) ? 'macOS 桌面端' : 'Windows 桌面端') : '本地浏览器版'}</span><button className="icon-button" onClick={() => navigate('home')} aria-label="查看官网"><ArrowUpRight size={18} /></button></div></header>
       <main className="app-content">{!state ? <div className="loading-state">{loadError ? <><AlertCircle size={34} /><h2>无法连接本地工作空间</h2><p>{loadError}</p><Button onClick={() => void refresh()}>重新连接</Button><code>npm run dev</code></> : <><LoaderCircle className="spin" size={28} /><p>正在打开你的工作空间…</p></>}</div> : props && <>
         {currentPage === 'app' && <Dashboard {...props} />}
         {currentPage === 'workers' && <WorkerStudio />}
@@ -101,6 +114,12 @@ export default function App() {
     {showNew && props && <NewTask {...props} onClose={() => setShowNew(false)} />}
     {showSearch && <Modal title="搜索任务" subtitle="按任务名称、输入内容或回复搜索" onClose={() => setShowSearch(false)}><div className="search-box"><Search size={18} /><input autoFocus aria-label="搜索任务内容" placeholder="输入关键词…" value={search} onChange={e => setSearch(e.target.value)} /></div><div className="search-results">{state?.tasks.filter(t => `${t.title} ${t.input} ${t.reply}`.toLowerCase().includes(search.toLowerCase())).slice(0, 20).map(t => <button key={t.id} onClick={() => { navigate(`task/${t.id}`); setShowSearch(false); }}><ListTodo size={18} /><span><strong>{t.title}</strong><small>{t.input.slice(0, 70)}</small></span><ArrowUpRight size={16} /></button>)}{state && state.tasks.filter(t => `${t.title} ${t.input} ${t.reply}`.toLowerCase().includes(search.toLowerCase())).length === 0 && <p className="muted">没有匹配的任务。</p>}</div></Modal>}
     {toast && <div role={toast.error ? 'alert' : 'status'} className={`toast ${toast.error ? 'toast-error' : ''}`}>{toast.error ? <AlertCircle size={19} /> : <CheckCircle2 size={19} />}<span>{toast.message}</span><button aria-label="关闭提示" onClick={() => setToast(undefined)}><X size={16} /></button></div>}
+    <LicenseModal
+      isOpen={showLicenseModal}
+      onClose={() => setShowLicenseModal(false)}
+      initialLicense={license}
+      onActivated={status => setLicense(status)}
+    />
   </div>;
 }
 

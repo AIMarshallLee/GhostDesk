@@ -15,10 +15,12 @@ import {
   ArrowRight,
   UserCheck,
   ExternalLink,
-  MessageSquare
+  MessageSquare,
+  Crown
 } from 'lucide-react';
-import type { CandidateDraft, CustomerLead, PsychologyDiagnostic } from '../shared/types';
+import type { CandidateDraft, CustomerLead, PsychologyDiagnostic, LicenseStatus } from '../shared/types';
 import { api, copyText } from './api';
+import LicenseModal from './LicenseModal';
 import './copilot.css';
 
 interface CopilotProps {
@@ -38,14 +40,22 @@ export default function Copilot({ onOpenFullAdmin }: CopilotProps) {
   const [apiKeyConfigured, setApiKeyConfigured] = useState(false);
   const [showPlaybooks, setShowPlaybooks] = useState(false);
   const [feedbackMsg, setFeedbackMsg] = useState('');
+  const [license, setLicense] = useState<LicenseStatus | null>(null);
+  const [showLicenseModal, setShowLicenseModal] = useState(false);
 
-  // Initial check for provider and USB status
+  // Initial check for provider, license, and USB status
   useEffect(() => {
     api<{ hasKey?: boolean }>('GET', '/provider')
       .then(data => {
         if (data && data.hasKey) {
           setApiKeyConfigured(true);
         }
+      })
+      .catch(() => {});
+
+    api<{ ok: boolean; status: LicenseStatus }>('GET', '/license/status')
+      .then(res => {
+        if (res && res.status) setLicense(res.status);
       })
       .catch(() => {});
 
@@ -68,7 +78,7 @@ export default function Copilot({ onOpenFullAdmin }: CopilotProps) {
     setLoading(true);
     setFeedbackMsg('');
     try {
-      const data = await api<{ ok: boolean; diagnostic: PsychologyDiagnostic; candidates: CandidateDraft[]; lead?: CustomerLead }>(
+      const data = await api<{ ok: boolean; diagnostic: PsychologyDiagnostic; candidates: CandidateDraft[]; lead?: CustomerLead; license?: LicenseStatus }>(
         'POST',
         '/copilot/reply',
         {
@@ -80,9 +90,16 @@ export default function Copilot({ onOpenFullAdmin }: CopilotProps) {
         setDiagnostic(data.diagnostic);
         setCandidates(data.candidates || []);
         setLead(data.lead || null);
+        if (data.license) setLicense(data.license);
       }
-    } catch {
-      setFeedbackMsg('解析失败，请检查服务连接');
+    } catch (err) {
+      const msg = (err as Error).message || '';
+      if (msg.includes('试用额度已用尽')) {
+        setShowLicenseModal(true);
+        setFeedbackMsg('⚠️ 试用额度已用尽，请点击顶部激活正式授权！');
+      } else {
+        setFeedbackMsg(msg || '解析失败，请检查服务连接');
+      }
     } finally {
       setLoading(false);
     }
@@ -157,6 +174,15 @@ export default function Copilot({ onOpenFullAdmin }: CopilotProps) {
           </div>
         </div>
         <div className="cp-badges">
+          <div
+            className={`cp-status-pill ${license?.licensed ? 'active' : ''}`}
+            onClick={() => setShowLicenseModal(true)}
+            title="点击查看授权状态与激活卡密"
+            style={{ cursor: 'pointer' }}
+          >
+            <Crown size={12} color={license?.licensed ? '#10b981' : '#f59e0b'} />
+            <span>{license?.licensed ? '正式版' : `试用余${license?.trialRemaining ?? 0}次`}</span>
+          </div>
           <div
             className={`cp-status-pill ${apiKeyConfigured ? 'active' : ''}`}
             onClick={() => setShowConfig(true)}
@@ -361,6 +387,13 @@ export default function Copilot({ onOpenFullAdmin }: CopilotProps) {
           </div>
         </div>
       )}
+
+      <LicenseModal
+        isOpen={showLicenseModal}
+        onClose={() => setShowLicenseModal(false)}
+        initialLicense={license}
+        onActivated={status => setLicense(status)}
+      />
     </div>
   );
 }

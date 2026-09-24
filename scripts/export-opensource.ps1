@@ -36,7 +36,8 @@ $ExcludeFiles = @(
     "*.tmp",
     ".env",
     "build.err",
-    "build-v2.err"
+    "build-v2.err",
+    "issue-license.mjs"
 )
 
 # 使用 robocopy 进行高效且纯净的文件同步

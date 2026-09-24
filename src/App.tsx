@@ -23,15 +23,21 @@ export interface PageProps {
   newTask: () => void;
 }
 const navItems = [
+  ['desktop-replies', '消息监控与回复', MessagesSquare],
   ['copilot', '⚡ 超轻私域副驾', Sparkles],
-  ['desktop-replies', '即时通讯私域管家', MessagesSquare],
-  ['app', '工作概览', LayoutDashboard], ['workers', '数字员工', Bot], ['autopilot', '回复模式实验室', WorkflowIcon], ['tasks', '任务中心', ListTodo], ['capture', '窗口助手', ScanLine],
-  ['computer-use', '电脑操作', Bot], ['attachments', '附件助手', ScanLine], ['hardware', 'USB 硬件', Usb], ['knowledge', '业务知识库', BookOpen], ['workflows', '工作流程', WorkflowIcon], ['audit', '活动记录', History],
+  ['knowledge', '业务知识库', BookOpen],
+  ['settings', '系统与硬件设置', Settings],
 ] as const;
 function getRoute() {
   const hash = window.location.hash.slice(1);
   if (hash === 'copilot' || hash === 'jev') return 'copilot';
-  return ['top', 'capabilities', 'method', 'scenarios', 'faq'].includes(hash) ? 'home' : hash || (window.flowdesk ? 'app' : 'home');
+  if (hash === 'knowledge') return 'knowledge';
+  if (hash === 'settings') return 'settings';
+  if (hash === 'home') return 'home';
+  if (['tasks', 'task', 'capture', 'computer-use', 'attachments', 'hardware', 'workflows', 'audit', 'app', 'workers', 'autopilot'].some(k => hash.startsWith(k))) {
+    return hash;
+  }
+  return 'desktop-replies';
 }
 
 export default function App() {
@@ -68,10 +74,10 @@ export default function App() {
     {mobileMenu && <div className="sidebar-scrim" onClick={() => setMobileMenu(false)} />}
     <aside className={`sidebar ${mobileMenu ? 'is-open' : ''}`}>
       <button className="brand-button" onClick={() => navigate('home')} aria-label="返回 FlowDesk 官网"><Logo small /></button>
-      <div className="workspace-switch"><span className="workspace-avatar">F</span><div><strong>{state?.preferences.workspaceName || '我的工作空间'}</strong><small>个人空间 · 本地版</small></div><PanelLeftClose size={15} /></div>
-      <Button variant="dark" className="sidebar-new" onClick={() => setShowNew(true)} disabled={!state}><Plus size={17} />新建任务<span>＋</span></Button>
-      <div className="nav-label">工作空间</div><nav aria-label="工作台导航">{navItems.map(([key, label, Icon]) => <button key={key} className={`nav-item ${currentPage === key || key === 'tasks' && currentPage === 'task' ? 'active' : ''}`} onClick={() => navigate(key)}><Icon size={18} /><span>{label}</span>{key === 'tasks' && !!state?.tasks.filter(t => t.status === 'review').length && <b>{state.tasks.filter(t => t.status === 'review').length}</b>}{key === 'capture' && <span className="tiny-badge">视觉</span>}</button>)}</nav>
-      <div className="sidebar-bottom"><div className="local-card"><span className="signal-dot" /><strong>你的数据，留在本地</strong><p>自动回复或人工复制，由你选择。</p><button onClick={() => navigate('settings')}>管理模型与存储<ArrowUpRight size={14} /></button></div><button className={`nav-item ${currentPage === 'settings' ? 'active' : ''}`} onClick={() => navigate('settings')}><Settings size={18} /><span>设置</span></button><div className="sidebar-user"><span>{(state?.preferences.operatorName || '我').slice(0, 1)}</span><div><strong>{state?.preferences.operatorName || '工作空间主人'}</strong><small>FlowDesk 0.8.0</small></div><span className="online-dot" /></div></div>
+      <div className="workspace-switch"><span className="workspace-avatar">F</span><div><strong>{state?.preferences.workspaceName || '私域管家工作空间'}</strong><small>安全·极简·硬件防封</small></div><PanelLeftClose size={15} /></div>
+      <Button variant="dark" className="sidebar-new" onClick={() => navigate('copilot')}><Sparkles size={16} />打开极简副驾<span>⚡</span></Button>
+      <div className="nav-label">核心功能</div><nav aria-label="工作台导航">{navItems.map(([key, label, Icon]) => <button key={key} className={`nav-item ${currentPage === key ? 'active' : ''}`} onClick={() => navigate(key)}><Icon size={18} /><span>{label}</span></button>)}</nav>
+      <div className="sidebar-bottom"><div className="local-card"><span className="signal-dot" /><strong>物理防封 · 本地运行</strong><p>Pico 物理键鼠级仿真，安全零风控。</p></div><div className="sidebar-user"><span>{(state?.preferences.operatorName || '我').slice(0, 1)}</span><div><strong>{state?.preferences.operatorName || '工作空间主人'}</strong><small>FlowDesk 商业版</small></div><span className="online-dot" /></div></div>
     </aside>
     <div className="workspace-main"><header className="app-topbar"><div className="breadcrumbs"><button className="icon-button mobile-toggle" onClick={() => setMobileMenu(true)} aria-label="打开导航"><Menu size={20} /></button><span>工作空间</span><span>/</span><strong>{title}</strong></div><div className="topbar-right"><button className="environment-tag" style={{ cursor: 'pointer', background: '#eff6ff', color: '#2563eb', fontWeight: 600, border: '1px solid #bfdbfe' }} onClick={() => navigate('copilot')} title="切换到 380px Jev 风格极轻侧边栏工作台"><Sparkles size={13} style={{ marginRight: 4 }} />⚡ 超轻私域副驾</button><button className="search-trigger" onClick={() => setShowSearch(true)}><Search size={16} /><span>搜索任务</span><kbd>Ctrl K</kbd></button><span className="environment-tag"><span />{window.flowdesk ? (/macintosh|mac os x/i.test(navigator.userAgent) ? 'macOS 桌面端' : 'Windows 桌面端') : '本地浏览器版'}</span><button className="icon-button" onClick={() => navigate('home')} aria-label="查看官网"><ArrowUpRight size={18} /></button></div></header>
       <main className="app-content">{!state ? <div className="loading-state">{loadError ? <><AlertCircle size={34} /><h2>无法连接本地工作空间</h2><p>{loadError}</p><Button onClick={() => void refresh()}>重新连接</Button><code>npm run dev</code></> : <><LoaderCircle className="spin" size={28} /><p>正在打开你的工作空间…</p></>}</div> : props && <>

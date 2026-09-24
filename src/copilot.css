@@ -1,0 +1,489 @@
+/* FlowDesk Copilot Ultra-lightweight IM Assistant (Jev-style) */
+.copilot-shell {
+  width: 100%;
+  max-width: 440px;
+  min-height: 100vh;
+  margin: 0 auto;
+  background: #f8fafc;
+  color: #1e293b;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 0 25px rgba(0, 0, 0, 0.06);
+  box-sizing: border-box;
+}
+
+.cp-header {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: #ffffff;
+  border-bottom: 1px solid #e2e8f0;
+  padding: 12px 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.cp-title-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cp-brand {
+  font-weight: 700;
+  font-size: 15px;
+  color: #0f172a;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cp-brand .badge {
+  background: #eff6ff;
+  color: #2563eb;
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+.cp-badges {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cp-status-pill {
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 7px;
+  border-radius: 99px;
+  background: #f1f5f9;
+  color: #475569;
+  text-decoration: none;
+  cursor: pointer;
+  border: 1px solid #e2e8f0;
+}
+
+.cp-status-pill.active {
+  background: #ecfdf5;
+  color: #059669;
+  border-color: #a7f3d0;
+}
+
+.cp-btn-icon {
+  background: none;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  color: #64748b;
+  transition: all 0.15s;
+}
+
+.cp-btn-icon:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+.cp-body {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1;
+}
+
+/* Quick Input Section */
+.cp-input-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+}
+
+.cp-quick-tags {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.cp-tag-pill {
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  color: #475569;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.cp-tag-pill:hover {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+  color: #2563eb;
+}
+
+.cp-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 13px;
+  line-height: 1.5;
+  resize: vertical;
+  min-height: 60px;
+  outline: none;
+  font-family: inherit;
+}
+
+.cp-textarea:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+}
+
+.cp-input-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.cp-btn-primary {
+  background: #2563eb;
+  color: #ffffff;
+  border: none;
+  border-radius: 6px;
+  padding: 7px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.cp-btn-primary:hover:not(:disabled) {
+  background: #1d4ed8;
+}
+
+.cp-btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Diagnostic Card */
+.cp-diag-card {
+  background: #ffffff;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+  padding: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+}
+
+.cp-diag-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.cp-diag-title {
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #0f172a;
+}
+
+.cp-meta-pills {
+  display: flex;
+  gap: 6px;
+}
+
+.cp-risk-badge {
+  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: 99px;
+  font-weight: 600;
+}
+
+.cp-risk-badge.safe {
+  background: #ecfdf5;
+  color: #059669;
+}
+
+.cp-risk-badge.cautious {
+  background: #fffbeb;
+  color: #d97706;
+}
+
+.cp-risk-badge.high_risk {
+  background: #fef2f2;
+  color: #dc2626;
+  animation: cp-pulse 1.8s infinite;
+}
+
+@keyframes cp-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+.cp-need-badge {
+  background: #f1f5f9;
+  color: #475569;
+  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: 99px;
+}
+
+.cp-intent-box {
+  background: #f8fafc;
+  border-left: 3px solid #3b82f6;
+  padding: 8px 10px;
+  border-radius: 4px;
+  margin-bottom: 8px;
+}
+
+.cp-intent-text {
+  font-size: 12px;
+  color: #334155;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.cp-action-text {
+  font-size: 12px;
+  color: #0f172a;
+  background: #fefce8;
+  border: 1px solid #fef08a;
+  border-radius: 6px;
+  padding: 6px 9px;
+  margin: 0;
+}
+
+/* Candidate Drafts */
+.cp-candidates-list {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.cp-candidate-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 11px;
+  position: relative;
+  transition: all 0.15s;
+}
+
+.cp-candidate-card:hover {
+  border-color: #93c5fd;
+  box-shadow: 0 3px 8px rgba(37, 99, 235, 0.06);
+}
+
+.cp-cand-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.cp-cand-label {
+  font-size: 12px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.cp-cand-label.quick { color: #d97706; }
+.cp-cand-label.warm { color: #059669; }
+.cp-cand-label.conversion { color: #2563eb; }
+
+.cp-cand-rationale {
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.cp-cand-text {
+  font-size: 13px;
+  line-height: 1.5;
+  color: #1e293b;
+  margin: 0 0 10px 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.cp-cand-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.cp-btn-small {
+  padding: 4px 10px;
+  font-size: 12px;
+  border-radius: 5px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #475569;
+  transition: all 0.15s;
+}
+
+.cp-btn-small:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+.cp-btn-small.usb-send {
+  background: #ecfdf5;
+  color: #059669;
+  border-color: #6ee7b7;
+  font-weight: 500;
+}
+
+.cp-btn-small.usb-send:hover {
+  background: #d1fae5;
+}
+
+/* CRM Lead Notice */
+.cp-lead-notice {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 8px;
+  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  color: #166534;
+}
+
+/* Preset Playbook Accordion */
+.cp-playbook-drawer {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.cp-pb-toggle {
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  font-weight: 600;
+  color: #475569;
+  cursor: pointer;
+}
+
+.cp-pb-toggle:hover {
+  background: #f8fafc;
+}
+
+.cp-pb-content {
+  padding: 0 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-top: 1px solid #f1f5f9;
+}
+
+.cp-pb-item {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 8px 10px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.cp-pb-item:hover {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+}
+
+.cp-pb-item strong {
+  display: block;
+  font-size: 12px;
+  color: #1e293b;
+  margin-bottom: 3px;
+}
+
+.cp-pb-item p {
+  font-size: 12px;
+  color: #64748b;
+  margin: 0;
+  line-height: 1.4;
+}
+
+/* Modal Settings */
+.cp-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+}
+
+.cp-modal {
+  background: #ffffff;
+  border-radius: 12px;
+  width: 100%;
+  max-width: 380px;
+  padding: 18px;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+}
+
+.cp-modal h3 {
+  margin: 0 0 12px;
+  font-size: 15px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.cp-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-bottom: 12px;
+}
+
+.cp-field label {
+  font-size: 12px;
+  font-weight: 500;
+  color: #475569;
+}
+
+.cp-field input {
+  padding: 7px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 13px;
+}

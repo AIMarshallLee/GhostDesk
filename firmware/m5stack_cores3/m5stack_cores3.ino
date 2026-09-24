@@ -366,30 +366,15 @@ void handleCommandLine(const String& line) {
 
     if (subCmd == "thinking") {
       setEmotion(EMOTION_THINKING, msg.length() ? msg : "AI 正在思考中...", 10000);
-      playTone(880, 25);
+      playTone(880, 50);
     } else if (subCmd == "done" || subCmd == "success") {
       setEmotion(EMOTION_HAPPY, msg.length() ? msg : "任务完成！", 6000);
-      playTone(1318, 40); delay(50); playTone(1760, 50);
+      playTone(1318, 100); delay(110); playTone(1760, 180);
     } else if (subCmd == "error" || subCmd == "fail") {
       setEmotion(EMOTION_WORRIED, msg.length() ? msg : "单测失败 / 遇到报错", 6000);
-      playTone(440, 80);
+      playTone(440, 300);
     } else if (subCmd == "idle") {
       setEmotion(EMOTION_IDLE, msg.length() ? msg : "Antigravity / Claude 待命", 0);
-    } else if (subCmd == "volume") {
-      int vol = msg.toInt();
-      if (vol < 0) vol = 0;
-      if (vol > 255) vol = 255;
-      M5.Speaker.setVolume(vol);
-    } else if (subCmd == "mute") {
-      M5.Speaker.setVolume(0);
-    } else if (subCmd == "screen") {
-      if (msg == "off") M5.Display.setBrightness(0);
-      else if (msg == "dim") M5.Display.setBrightness(30);
-      else if (msg == "on") M5.Display.setBrightness(100);
-      else {
-        int b = msg.toInt();
-        if (b >= 0 && b <= 255) M5.Display.setBrightness(b);
-      }
     }
     Serial.println("{\"ok\":true,\"buddy\":true}");
     updateScreen();
@@ -510,7 +495,7 @@ void setup() {
   M5.begin(cfg);
   M5.Display.setRotation(1);
   M5.Display.setBrightness(120);
-  M5.Speaker.setVolume(20); // 调低默认音量至轻柔级别，避免刺耳噪声
+  M5.Speaker.setVolume(160);
 
   // 初始化双麦克风 (ES7210 16kHz 16bit)
   auto mic_cfg = M5.Mic.config();
@@ -586,20 +571,32 @@ void loop() {
     processMicrophone();
   }
 
-  // 3. 表情与状态到期更新 (仅在状态切换时单次刷新，不轮询)
+  // 3. 表情与动画更新
   if (!state.armed && !state.isRecordingVoice) {
     if (state.emotion != EMOTION_IDLE && state.emotionUntil > 0 && now > state.emotionUntil) {
       state.emotion = EMOTION_IDLE;
-      state.buddyStatusMsg = "FlowDesk · 待命就绪";
+      state.buddyStatusMsg = "Antigravity / Claude 待命";
       state.emotionUntil = 0;
-      updateScreen();
+    }
+
+    if (state.emotion == EMOTION_IDLE) {
+      if (now > nextBlinkTime) {
+        eyeBlinkState = (eyeBlinkState + 1) % 3;
+        nextBlinkTime = (eyeBlinkState == 0) ? now + random(2500, 5000) : now + 60;
+      }
+      if (now > nextLookTime) {
+        eyeLookOffset = random(-14, 15);
+        nextLookTime = now + random(3000, 6000);
+      }
+    } else if (state.emotion == EMOTION_THINKING) {
+      eyeBlinkState = 0;
+      eyeLookOffset = (int)(sin(now / 150.0) * 16.0);
     }
   }
 
   // 4. GhostDesk 租约检查
   if (state.armed && now > state.leaseExpireAt) {
     disarm("Heartbeat Timeout");
-    updateScreen();
   }
 
   // 5. 读取电脑串口命令
@@ -615,11 +612,10 @@ void loop() {
     }
   }
 
-  // 6. 仅在对讲机录音时动态渲染声波 (平常彻底停止无意义刷屏，0 闪烁，静止护眼)
-  if (state.isRecordingVoice) {
-    if (now - lastScreenUpdate > 60) {
-      lastScreenUpdate = now;
-      updateScreen();
-    }
+  // 6. 定时刷新屏幕 (录音时以 50ms 高帧率渲染声波，平常 80ms)
+  uint32_t refreshInterval = state.isRecordingVoice ? 50 : 80;
+  if (now - lastScreenUpdate > refreshInterval) {
+    lastScreenUpdate = now;
+    updateScreen();
   }
 }

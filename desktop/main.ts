@@ -315,6 +315,6 @@ app.whenReady().then(async () => {
     void Promise.all([replies?.dispose(), computerUse.controller.waitForIdle(), service.close()]).finally(async () => { await usbDevice.disconnect().catch(() => {}); app.quit(); });
   });
   if (process.argv.includes('--smoke-test')) setTimeout(() => { console.error('FlowDesk smoke test did not receive simulator readiness.'); app.exit(1); }, 10000);
-}).catch(() => { console.error('FlowDesk startup failed.'); app.exit(1); });
+}).catch((err) => { console.error('FlowDesk startup failed:', err); app.exit(1); });
 // Fixture windows close before their async assertions and cleanup finish.
 app.on('window-all-closed', () => { if (process.platform !== 'darwin' && !fixtureTest) app.quit(); });

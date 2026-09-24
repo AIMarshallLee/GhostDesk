@@ -256,6 +256,65 @@ export async function createService({ dataDir, secrets, fetchImpl = fetch, befor
       const candidates = generateTripleCandidates(baseReply, diagnostic, customerInput);
       return { ok: true, candidates };
     }
+    if (method === 'POST' && path === '/copilot/reply') {
+      const text = string(body.text, '消息内容', 10000);
+      const history = Array.isArray(body.history) ? body.history : [];
+      const diagnostic = analyzePsychologyAndIntent(text, history);
+      const lead = qualifyLeadFromText('当前会话', text);
+      let baseReply = '';
+      const apiKey = await key();
+      const hasLiveModel = Boolean(apiKey || ['localhost', '127.0.0.1', '::1'].includes(providerUrl(state.provider.baseUrl).hostname));
+      if (hasLiveModel && body.allowModel === true) {
+        try {
+          const controller = new AbortController();
+          const timer = setTimeout(() => controller.abort(), 12000);
+          const url = providerUrl(state.provider.baseUrl);
+          const endpoint = new URL('chat/completions', url.href.endsWith('/') ? url.href : `${url.href}/`);
+          const res = await fetchImpl(endpoint, {
+            method: 'POST',
+            signal: controller.signal,
+            headers: { 'Content-Type': 'application/json', ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}) },
+            body: JSON.stringify({
+              model: state.provider.model,
+              temperature: 0.3,
+              messages: [
+                { role: 'system', content: '你是即时通讯销售副驾。针对客户意图给出一段专业、亲和且具备销售转化力的中文回复正文，不要寒暄与多余解释。' },
+                { role: 'user', content: `客户消息：${text}\n客户底层诉求：${diagnostic.coreNeed}，风险等级：${diagnostic.riskLevel}。\n战术建议：${diagnostic.suggestedAction}。` }
+              ]
+            })
+          });
+          clearTimeout(timer);
+          if (res.ok) {
+            const data = await res.json() as { choices?: Array<{ message?: { content?: string } }> };
+            baseReply = (data.choices?.[0]?.message?.content || '').trim();
+          }
+        } catch {
+          baseReply = '';
+        }
+      }
+      if (!baseReply) {
+        if (diagnostic.coreNeed === 'price') {
+          baseReply = '咱们产品的定价是严格对标高规格品质和长期售后保障的，一分钱一分货；如果今天能定下来，我可以帮您向主管申请一份专属配套增值福利。';
+        } else if (diagnostic.riskLevel === 'high_risk') {
+          baseReply = '非常理解您的心情，请您先别着急！出现任何问题咱们都全程负责到底，我马上为您安排加急妥善处理。';
+        } else if (diagnostic.coreNeed === 'speed') {
+          baseReply = '收到，明白您时间紧急！我们库房都是现货直发，现在确认好收件信息，我今天第一批次就能帮您安排打包发走。';
+        } else if (diagnostic.coreNeed === 'trust') {
+          baseReply = '请您完全放心，咱们是正规官方质保，资质合同齐全，支持全程技术指导与无忧保障。';
+        } else {
+          baseReply = '您好，非常高兴为您服务！针对您咨询的情况，我们有标准完善的解决方案，您可以先了解一下细节。';
+        }
+      }
+      const candidates = generateTripleCandidates(baseReply, diagnostic, text);
+      return {
+        ok: true,
+        diagnostic,
+        candidates,
+        baseReply,
+        lead: (lead.phone || lead.budget || lead.painPoint) ? lead : undefined,
+      };
+
+    }
     if (method === 'PUT' && path === '/learning/settings') {
       if (typeof body.collectApprovedLearning !== 'boolean') throw new ApiError(400, '自动收集设置无效');
       await mutate('learning_settings', undefined, '更新已审核问答的本地候选收集设置', () => { state.preferences.collectApprovedLearning = body.collectApprovedLearning as boolean; });

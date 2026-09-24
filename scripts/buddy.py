@@ -8,11 +8,6 @@ GhostDesk & AI Buddy CLI Helper
     python scripts/buddy.py done "代码重构完成，单测全部通过！"
     python scripts/buddy.py error "构建失败，请检查语法错误"
     python scripts/buddy.py idle
-    python scripts/buddy.py volume 15  # 设置温和轻柔音量 (0~255)
-    python scripts/buddy.py mute       # 一键完全静音
-    python scripts/buddy.py screen dim # 屏幕柔和低亮度（护眼不刺眼）
-    python scripts/buddy.py screen off # 彻底息屏（黑屏省电，后台仍然工作）
-    python scripts/buddy.py screen on  # 恢复正常亮度
 """
 
 import sys

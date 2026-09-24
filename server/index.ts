@@ -11,7 +11,8 @@ import type { ComputerUseAction } from '../shared/computer-use';
 
 type HttpOptions = { root?: string; dataDir?: string; host?: string; port?: number };
 const json = (res: ServerResponse, code: number, value: unknown, head = false) => { res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }); res.end(head ? undefined : JSON.stringify(value)); };
-const maxBodyBytes = 12 * 1024 * 1024;
+// Up to 12 MiB encoded files plus pasted text and JSON framing.
+const maxBodyBytes = 15 * 1024 * 1024;
 const readBody = async (req: IncomingMessage) => new Promise<unknown>((resolve, reject) => { const chunks: Buffer[] = []; let size = 0; let tooLarge = false; req.on('data', (chunk: Buffer) => { size += chunk.length; if (size > maxBodyBytes) { if (!tooLarge) { tooLarge = true; reject(new ApiError(413, '请求体过大')); } return; } chunks.push(chunk); }); req.on('end', () => { if (tooLarge) return; try { const text = Buffer.concat(chunks).toString('utf8'); resolve(text ? JSON.parse(text) : undefined); } catch { reject(new ApiError(400, 'JSON 格式无效')); } }); req.on('error', reject); });
 const mime = new Map([['.html', 'text/html; charset=utf-8'], ['.js', 'text/javascript; charset=utf-8'], ['.css', 'text/css; charset=utf-8'], ['.svg', 'image/svg+xml'], ['.png', 'image/png'], ['.json', 'application/json; charset=utf-8']]);
 export async function createHttpServer(options: HttpOptions = {}): Promise<Server> {

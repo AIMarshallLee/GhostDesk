@@ -1,3 +1,4 @@
+import { knowledgeAvailable } from '../server/knowledge';
 import { clipboard, desktopCapturer, ipcMain } from 'electron';
 import type { AppState } from '../shared/types.ts';
 import type { ComputerUseStart, ComputerUseTarget } from '../shared/computer-use.ts';
@@ -43,7 +44,7 @@ export async function registerComputerUse(options: {
       if (!Array.isArray(ids) || ids.length > 20 || ids.some(id => typeof id !== 'string')) throw new Error('知识选择无效。');
       if (!ids.length) return '';
       const state = await options.getWorkspace();
-      const entries = state.knowledge.filter(item => ids.includes(item.id) && item.enabled);
+      const entries = state.knowledge.filter(item => ids.includes(item.id) && knowledgeAvailable(item));
       if (entries.length !== new Set(ids).size) throw new Error('所选知识已变化，请重新选择。');
       const content = entries.map(item => `${item.title}\n${item.content}`).join('\n\n');
       if (content.length > 20000) throw new Error('所选知识超过 20,000 字符，请减少选择。');

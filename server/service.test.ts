@@ -52,6 +52,7 @@ test('实时生成只带入匹配的启用知识，生成中不能审核旧回�
   try {
     await f.service.request({ method: 'PUT', path: '/settings', body: { provider: { baseUrl: 'http://127.0.0.1:9999/v1', model: 'test', temperature: 0 } } });
     const enabled = await f.service.request({ method: 'POST', path: '/knowledge', body: { title: '交付周期', content: '标准交付周期为三个工作日。', tags: ['订单'], enabled: true } });
+    await f.service.request({ method: 'POST', path: '/knowledge/review', body: { ids: [enabled.id], approved: true } });
     await f.service.request({ method: 'POST', path: '/knowledge', body: { title: '禁用资料', content: '不应发送给模型。', tags: ['订单'], enabled: false } });
     const task = await f.service.request({ method: 'POST', path: '/tasks', body: { workflowId: '', input: '客户问订单交付周期', title: '知识测试' } });
     await f.service.request({ method: 'PUT', path: `/tasks/${task.id}`, body: { reply: '旧回复' } });
@@ -79,7 +80,8 @@ test('设置空密钥保留现有密钥，编辑输入撤销批准，provider �
     await f.service.request({ method: 'PUT', path: '/settings', body: { provider: { baseUrl: 'http://127.0.0.1:9999/v1', model: 'test', temperature: 0, apiKey: 'saved-key' } } });
     await f.service.request({ method: 'PUT', path: '/settings', body: { provider: { baseUrl: 'http://127.0.0.1:9999/v1', model: 'test', temperature: 0, apiKey: '' } } });
     assert.equal((await f.service.request({ method: 'GET', path: '/state' })).provider.hasKey, true);
-    await f.service.request({ method: 'POST', path: '/knowledge', body: { title: '连接成功', content: '私有知识不得用于测试。', tags: [], enabled: true } });
+    const privateKnowledge = await f.service.request({ method: 'POST', path: '/knowledge', body: { title: '连接成功', content: '私有知识不得用于测试。', tags: [], enabled: true } });
+    await f.service.request({ method: 'POST', path: '/knowledge/review', body: { ids: [privateKnowledge.id], approved: true } });
     await f.service.request({ method: 'POST', path: '/provider/test' }); assert.doesNotMatch(requestBody.messages[1].content, /私有知识/);
     const task = await f.service.request({ method: 'POST', path: '/tasks', body: {} }); await f.service.request({ method: 'PUT', path: `/tasks/${task.id}`, body: { reply: '可审核回复' } }); await f.service.request({ method: 'POST', path: `/tasks/${task.id}/approve` });
     const edited = await f.service.request({ method: 'PUT', path: `/tasks/${task.id}`, body: { input: '已更新输入', reply: '' } }); assert.equal(edited.status, 'draft'); assert.equal(edited.reply, '');

@@ -13,6 +13,7 @@ import type { ReplyModelProtocol } from '../shared/desktop-replies';
 import { createUsbWindowsDriver } from './usb-windows';
 import type { UsbDevice } from './usb-device';
 import { monitorUsbHardware, requireUsbHardware } from './hardware-gate';
+import { knowledgeAvailable, retrieveKnowledge } from '../server/knowledge';
 
 export async function registerDesktopReplies(options: {
   trusted(event: Electron.IpcMainInvokeEvent): void;
@@ -54,16 +55,24 @@ export async function registerDesktopReplies(options: {
         },
       });
     },
-    async context(config) {
+    async context(config, query) {
       const state = await options.getWorkspace();
-      if (config.knowledgeIds.length > 20) throw new Error('请选择最多 20 条知识。');
-      const entries = state.knowledge.filter(item => item.enabled && config.knowledgeIds.includes(item.id));
-      if (entries.length !== new Set(config.knowledgeIds).size) throw new Error('所选知识已被禁用或删除。');
-      const knowledge = entries.map(item => `【${item.title}】\n${item.content}`).join('\n\n');
-      if (knowledge.length > 20000) throw new Error('所选知识超过 20,000 字符，请减少选择。');
+      const mode = config.knowledgeMode ?? 'selected';
+      if (mode === 'selected' && config.knowledgeIds.length > 20) throw new Error('手动选择模式最多使用 20 条知识。');
+      const allowed = new Set(config.knowledgeIds);
+      const selected = state.knowledge.filter(item => knowledgeAvailable(item) && allowed.has(item.id));
+      if (mode === 'selected' && selected.length !== allowed.size) throw new Error('所选知识已停用、待审核或删除。');
       const workflow = state.workflows.find(item => item.id === config.workflowId && item.enabled);
       if (config.workflowId && !workflow) throw new Error('所选工作流已被禁用或删除。');
-      return { knowledge, instructions: workflow ? `${workflow.instructions}\n${workflow.description}\n${workflow.greeting}` : '' };
+      if (!query) return { knowledge: '', instructions: workflow ? `${workflow.instructions}\n${workflow.description}\n${workflow.greeting}` : '', knowledgeIds: [] };
+      const entries: Array<{ id: string; title: string; content: string }> = mode === 'retrieve'
+        ? retrieveKnowledge(state.knowledge, { query: query.slice(0, 4000), ids: config.knowledgeIds.length ? config.knowledgeIds : undefined }).hits
+        : selected.map(item => ({ id: item.id, title: item.title, content: item.content }));
+      const included: typeof entries = []; let length = 0; let omitted = 0;
+      for (const item of entries) { const text = `【${item.title}】\n${item.content}`; if (length + text.length > 20000) { omitted++; continue; } included.push(item); length += text.length; }
+      const coverage = included.length ? '' : '\n资料未覆盖，请澄清或转人工，不编造价格/承诺。';
+      const truncation = omitted ? `\n已因 20,000 字符上下文上限省略 ${omitted} 条完整知识。` : '';
+      return { knowledge: included.map(item => `【${item.title}】\n${item.content}`).join('\n\n'), instructions: `${workflow ? `${workflow.instructions}\n${workflow.description}\n${workflow.greeting}` : ''}${coverage}${truncation}`, knowledgeIds: included.map(item => item.id) };
     },
     async generate(input, signal) { if (!model) throw new Error('请重新开始监听。'); return model.generate(input, signal); },
   });

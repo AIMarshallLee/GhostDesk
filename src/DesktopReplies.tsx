@@ -11,7 +11,7 @@ import './desktop-replies.css';
 type Region = keyof ReplyLayout;
 const regions: Array<[Region, string]> = [['conversations', '会话列表'], ['header', '会话标题'], ['messages', '消息区域'], ['composer', '输入框'], ['send', '发送按钮']];
 const statusNames: Record<DesktopReplyJob['status'], string> = { queued: '排队中', generating: '生成中', ready: '待复制', copied: '已复制', sending: '发送中', visually_confirmed: '视觉确认', uncertain: '结果不明', handoff: '人工接管', failed: '失败' };
-const makeConfig = (): DesktopReplyConfig => ({ conversations: [], layout: structuredClone(defaultReplyLayout), mode: 'manual', modelProtocol: 'gemini-native', pollSeconds: 20, maxRepliesPerHour: 20, knowledgeIds: [], workflowId: '', inputBackend: 'usb', humanDelay: true, splitBubbles: false });
+const makeConfig = (): DesktopReplyConfig => ({ conversations: [], layout: structuredClone(defaultReplyLayout), mode: 'manual', modelProtocol: 'gemini-native', pollSeconds: 20, maxRepliesPerHour: 20, knowledgeMode: 'selected', knowledgeIds: [], workflowId: '', inputBackend: 'usb', humanDelay: true, splitBubbles: false });
 const cloneConfig = (value: DesktopReplyConfig) => structuredClone(value);
 const asBridge = () => (window.flowdesk as (typeof window.flowdesk & { desktopReplies?: DesktopReplyBridge }) | undefined)?.desktopReplies;
 
@@ -93,10 +93,10 @@ export default function DesktopRepliesPage({ state, notify }: PageProps) {
       if (res.ok) {
         setExtractResult(res.result);
         if (autoSave) {
-          notify(`已成功萃取并保存 ${res.result.suggestedQa.length} 条高转化实战话术到知识库！`);
+          notify(`已整理 ${res.result.suggestedQa.length} 条聊天候选，等待人工审核后启用。`);
           setShowExtractModal(false);
         } else {
-          notify(`AI 萃取提炼出 ${res.result.suggestedQa.length} 组问答，请在下方预览确认。`);
+          notify(`已按聊天角色整理 ${res.result.suggestedQa.length} 组问答，请在下方核对。`);
         }
       }
     } catch (e) { notify((e as Error).message, true); }
@@ -132,7 +132,7 @@ export default function DesktopRepliesPage({ state, notify }: PageProps) {
 
   const dirty = JSON.stringify(config) !== JSON.stringify(savedConfig);
   const selected = useMemo(() => targets.find(item => item.id === targetId) || (replyState?.target?.id === targetId ? replyState.target : undefined), [targets, targetId, replyState?.target]);
-  const activeKnowledge = state.knowledge.filter(item => item.enabled);
+  const activeKnowledge = state.knowledge.filter(item => item.enabled && item.reviewStatus !== 'pending');
   const running = replyState?.status === 'running';
   const updateRect = (key: Region, value: NormalizedRect) => setConfig(current => ({ ...current, layout: { ...current.layout, [key]: value } }));
   const point = (event: React.PointerEvent<HTMLDivElement>) => { const box = event.currentTarget.getBoundingClientRect(); return { x: Math.max(0, Math.min(1, (event.clientX - box.left) / box.width)), y: Math.max(0, Math.min(1, (event.clientY - box.top) / box.height)) }; };
@@ -156,13 +156,13 @@ export default function DesktopRepliesPage({ state, notify }: PageProps) {
         <div>
           <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 600 }}>桌面即时通讯私域管家</h3>
           <p style={{ margin: 0, fontSize: '12px', color: 'var(--muted, #888)' }}>
-            通用兼容微信/企微/飞书/钉钉等桌面端 · 物理外设防封 + 纯视觉读取 · 金牌话术沉淀与客资自动打标
+            通用桌面聊天工作台 · 本地视觉读取 · 聊天内容整理与人工审核
           </p>
         </div>
       </div>
       <div style={{ display: 'flex', gap: '8px' }}>
         <Button variant="secondary" busy={busy} onClick={() => void openPlaybooks()}><Sparkles size={15} />载入实战话术包</Button>
-        <Button variant="secondary" busy={busy} onClick={() => { setExtractResult(null); setShowExtractModal(true); }}><FileText size={15} />AI 聊天记录萃取</Button>
+        <Button variant="secondary" busy={busy} onClick={() => { setExtractResult(null); setShowExtractModal(true); }}><FileText size={15} />整理聊天记录</Button>
         <Button variant="secondary" busy={busy} onClick={() => void openLeads()}><Users size={15} />私域客资看板 (CRM)</Button>
       </div>
     </div>
@@ -184,9 +184,9 @@ export default function DesktopRepliesPage({ state, notify }: PageProps) {
             <span>💬 <strong>长文本短句分段发送</strong>（拆成 2~3 个短气泡分次发送，贴近真人节奏）</span>
           </label>
         </div>
-        <p className="dr-warning">持续回复的自动与人工草稿模式都必须先连接匹配固件的 Pico 1 或 M5Stack CoreS3。USB 断开或异常会停止任务，绝不回退到无保护纯软件输入。自动模式逐键输入中文全拼、英文数字和常用标点，读取当前候选窗选词；适配目标含微软、微信、搜狗、百度输入法。请启用全拼并最大化目标窗口，让候选词完整可见；从空白输入框开始。{usbStatus?.connected ? (usbStatus.armed ? ' 软件任务会话活动中。' : ' 已连接，等待软件开始。') : ' 当前未连接。'}</p><div className="dr-context"><fieldset><legend>业务知识（可多选）</legend>{activeKnowledge.length ? activeKnowledge.map(item => <label key={item.id}><input type="checkbox" checked={config.knowledgeIds.includes(item.id)} onChange={() => setConfig(current => ({ ...current, knowledgeIds: current.knowledgeIds.includes(item.id) ? current.knowledgeIds.filter(id => id !== item.id) : [...current.knowledgeIds, item.id] }))} />{item.title}</label>) : <p className="muted">没有已启用知识条目。</p>}</fieldset><Field label="工作流程"><select aria-label="持续回复工作流程" value={config.workflowId} onChange={e => setConfig(current => ({ ...current, workflowId: e.target.value }))}><option value="">不使用工作流程</option>{state.workflows.filter(item => item.enabled).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></Field></div><div className="dr-save"><div><strong>{provider?.configured ? '所选模型已配置' : '尚未配置所选模型'}</strong><p>{provider?.configured ? `${provider.model} · ${provider.baseUrl}` : (config.modelProtocol === 'gemini-native' ? '在电脑操作页保存 Gemini 原生协议、模型和 API Key；读取、生成、原生动作与输入法使用同一密钥。' : '在设置页配置 OpenAI 兼容视觉模型。旧配置保留此协议。')}</p></div><Button variant="secondary" onClick={() => navigate(config.modelProtocol === 'gemini-native' ? 'computer-use' : 'settings')}>配置所选模型</Button><Button busy={busy} disabled={running} onClick={() => void save()}><Check size={16} />保存配置</Button></div></section>
+        <p className="dr-warning">持续回复的自动与人工草稿模式都必须先连接匹配固件的 Pico 1 或 M5Stack CoreS3。USB 断开或异常会停止任务，绝不回退到无保护纯软件输入。自动模式逐键输入中文全拼、英文数字和常用标点，读取当前候选窗选词；适配目标含微软、微信、搜狗、百度输入法。请启用全拼并最大化目标窗口，让候选词完整可见；从空白输入框开始。{usbStatus?.connected ? (usbStatus.armed ? ' 软件任务会话活动中。' : ' 已连接，等待软件开始。') : ' 当前未连接。'}</p><div className="dr-context"><fieldset><legend>业务知识</legend><label><input type="radio" name="knowledge-mode" checked={(config.knowledgeMode ?? 'selected') === 'selected'} onChange={() => setConfig(current => ({ ...current, knowledgeMode: 'selected' }))} />仅使用手动选择的知识（最多 20 条）</label><label><input type="radio" name="knowledge-mode" checked={config.knowledgeMode === 'retrieve'} onChange={() => setConfig(current => ({ ...current, knowledgeMode: 'retrieve' }))} />按每条新消息检索已审核、已启用的本地知识</label>{config.knowledgeMode === 'retrieve' && <p className="dr-warning">这是明确授权：若下方不勾选范围，系统会从当前独立工作区全部已审核、已启用知识中本地检索；仅实际命中的完整条目才会发给模型。</p>}{activeKnowledge.length ? activeKnowledge.map(item => <label key={item.id}><input type="checkbox" checked={config.knowledgeIds.includes(item.id)} onChange={() => setConfig(current => ({ ...current, knowledgeIds: current.knowledgeIds.includes(item.id) ? current.knowledgeIds.filter(id => id !== item.id) : [...current.knowledgeIds, item.id] }))} />{item.title}</label>) : <p className="muted">没有已审核且已启用知识条目。</p>}</fieldset><Field label="工作流程"><select aria-label="持续回复工作流程" value={config.workflowId} onChange={e => setConfig(current => ({ ...current, workflowId: e.target.value }))}><option value="">不使用工作流程</option>{state.workflows.filter(item => item.enabled).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></Field></div><div className="dr-save"><div><strong>{provider?.configured ? '所选模型已配置' : '尚未配置所选模型'}</strong><p>{provider?.configured ? `${provider.model} · ${provider.baseUrl}` : (config.modelProtocol === 'gemini-native' ? '在电脑操作页保存 Gemini 原生协议、模型和 API Key；读取、生成、原生动作与输入法使用同一密钥。' : '在设置页配置 OpenAI 兼容视觉模型。旧配置保留此协议。')}</p></div><Button variant="secondary" onClick={() => navigate(config.modelProtocol === 'gemini-native' ? 'computer-use' : 'settings')}>配置所选模型</Button><Button busy={busy} disabled={running} onClick={() => void save()}><Check size={16} />保存配置</Button></div></section>
     </div><aside className="panel dr-status"><div className="panel-head"><div><h2>持续运行状态</h2><p>{replyState?.message || '尚未加载运行状态。'}</p></div><span className={`dr-status-pill ${replyState?.status || 'stopped'}`}>{replyState?.status === 'running' ? '运行中' : replyState?.status === 'paused' ? '已暂停' : replyState?.status === 'needs_attention' ? '需要处理' : '已停止'}</span></div><div className="dr-metrics"><span>扫描轮次<strong>{replyState?.cycle || 0}</strong></span><span>下一次<strong>{replyState?.nextScanAt ? new Date(replyState.nextScanAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) : '—'}</strong></span></div><div className="dr-run-actions">{running ? <Button variant="secondary" disabled={busy} onClick={() => void desktop.pause().then(setReplyState).catch(error => notify((error as Error).message, true))}><Pause size={15} />暂停</Button> : <Button disabled={busy || dirty || !selected || !provider?.configured || config.conversations.length === 0 || !usbStatus?.connected} onClick={() => setConfirmStart(true)}><Play size={15} />启动前确认</Button>}<Button variant="danger" disabled={!busy && replyState?.status === 'stopped'} onClick={() => void desktop.stop().then(value => { setReplyState(value); notify('持续回复已停止'); }).catch(error => notify((error as Error).message, true))}><Square size={15} />停止</Button></div>{dirty && <p className="dr-warning">配置有未保存修改；请保存后再启动。</p>}<div className="dr-jobs"><h3>回复任务</h3>{replyState?.jobs.length ? replyState.jobs.slice(0, 30).map(job => <article key={job.id}><div><strong>{job.conversationName}</strong><p>{job.input}</p>{job.reply && <p className="dr-reply">{job.reply}</p>}<small>{statusNames[job.status]} · {job.detail || '等待更新'}</small>{job.status === 'uncertain' && <p className="dr-warning">请先检查发送记录，并人工清理未提交拼音或残留草稿，再恢复会话；此任务不会自动重试。</p>}</div><div>{job.reply && job.status !== 'sending' && <Button variant="secondary" onClick={() => void desktop.copy(job.id).then(() => notify('回复已复制')).catch(error => notify((error as Error).message, true))}><Clipboard size={14} />复制</Button>}{job.status === 'uncertain' && <Button variant="secondary" onClick={() => void desktop.resolve(job.id).then(setReplyState).catch(error => notify((error as Error).message, true))}>标记已处理</Button>}</div></article>) : <p className="muted">启动后会在这里显示生成、待复制、视觉确认或结果不明的任务。</p>}</div><div className="dr-takeovers"><h3>会话人工接管</h3>{config.conversations.map(item => { const active = replyState?.config.conversations.find(row => row.id === item.id); const takingOver = active ? !active.enabled : !item.enabled; return <label key={item.id}><span>{item.name}</span><input type="checkbox" checked={takingOver} onChange={() => void changeTakeover(item.id, takingOver)} disabled={busy} />人工接管</label>; })}</div></aside></div>
-    {confirmStart && selected && <Modal title="确认启动持续回复" subtitle="仅在此确认后，才会将截图发送到已配置的模型接口，并使用已连接的 Pico / CoreS3 USB HID。" onClose={() => setConfirmStart(false)}><div className="dr-confirm"><p><strong>目标窗口：</strong>{selected.name}</p><p><strong>已保存模型：</strong>{provider?.model} · {provider?.baseUrl}</p><p><strong>回复方式：</strong>{config.mode === 'auto' ? '自动回复会在视觉确认后发送。' : '人工复制回复只生成草稿，不会自动发送。'}</p><p><strong>必需硬件：</strong>防封 USB HID（Pico / CoreS3）；断开或异常会停止任务，不回退无保护软件执行器。</p><p><strong>发送给模型：</strong>目标窗口及窗口内输入法候选截图、{config.conversations.filter(item => item.enabled).length} 个启用会话名、所选工作流和 {config.knowledgeIds.length} 条知识。</p></div><div className="modal-actions"><Button variant="secondary" onClick={() => setConfirmStart(false)}>返回检查</Button><Button busy={busy} disabled={!usbStatus?.connected} onClick={() => void start()}><Play size={16} />确认启动</Button></div></Modal>}
+    {confirmStart && selected && <Modal title="确认启动持续回复" subtitle="仅在此确认后，才会将截图发送到已配置的模型接口，并使用已连接的 Pico / CoreS3 USB HID。" onClose={() => setConfirmStart(false)}><div className="dr-confirm"><p><strong>目标窗口：</strong>{selected.name}</p><p><strong>已保存模型：</strong>{provider?.model} · {provider?.baseUrl}</p><p><strong>回复方式：</strong>{config.mode === 'auto' ? '自动回复会在视觉确认后发送。' : '人工复制回复只生成草稿，不会自动发送。'}</p><p><strong>必需硬件：</strong>防封 USB HID（Pico / CoreS3）；断开或异常会停止任务，不回退无保护软件执行器。</p><p><strong>发送给模型：</strong>目标窗口及窗口内输入法候选截图、所选工作流，以及{config.knowledgeMode === 'retrieve' ? (config.knowledgeIds.length ? `每条新消息从限定的 ${config.knowledgeIds.length} 条知识中本地检索出的实际命中条目。` : '每条新消息从当前独立工作区所有已审核、已启用知识中本地检索出的实际命中条目。') : `手动选择的 ${config.knowledgeIds.length} 条知识。`}</p></div><div className="modal-actions"><Button variant="secondary" onClick={() => setConfirmStart(false)}>返回检查</Button><Button busy={busy} disabled={!usbStatus?.connected} onClick={() => void start()}><Play size={16} />确认启动</Button></div></Modal>}
 
     {showPlaybookModal && <Modal title="⚡ 载入预置实战行业话术包" subtitle="由一线销冠与售后团队打磨的标准化沟通 SOP，1 秒注入本地知识库。" onClose={() => setShowPlaybookModal(false)}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', maxHeight: '60vh', overflowY: 'auto' }}>
@@ -215,7 +215,7 @@ export default function DesktopRepliesPage({ state, notify }: PageProps) {
       </div>
     </Modal>}
 
-    {showExtractModal && <Modal title="🧠 金牌实战聊天记录 AI 萃取器" subtitle="将销冠过往真实成交的历史对话或客服记录粘贴在下方，AI 自动拆解提炼问答对与跟进 SOP。" onClose={() => setShowExtractModal(false)}>
+    {showExtractModal && <Modal title="聊天记录整理" subtitle="粘贴本地聊天文本，按角色整理为待审核的问答候选；不会调用模型，也不代表实际效果。" onClose={() => setShowExtractModal(false)}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
         <Field label="历史聊天记录文本" hint="支持格式如「客户：... 销售：...」或多段自然对话复制">
           <textarea
@@ -226,12 +226,12 @@ export default function DesktopRepliesPage({ state, notify }: PageProps) {
           />
         </Field>
         <div style={{ display: 'flex', gap: '10px' }}>
-          <Button variant="secondary" busy={busy} onClick={() => void runExtract(false)}><Sparkles size={15} />智能分析预览</Button>
-          <Button busy={busy} onClick={() => void runExtract(true)}><Check size={15} />直接萃取并存入知识库</Button>
+          <Button variant="secondary" busy={busy} onClick={() => void runExtract(false)}><Sparkles size={15} />整理预览</Button>
+          <Button busy={busy} onClick={() => void runExtract(true)}><Check size={15} />保存为待审核候选</Button>
         </div>
         {extractResult && (
           <div style={{ marginTop: '10px', padding: '14px', borderRadius: '8px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
-            <h4 style={{ margin: '0 0 8px', fontSize: '14px', color: '#38bdf8' }}>萃取成功：{extractResult.title}</h4>
+            <h4 style={{ margin: '0 0 8px', fontSize: '14px', color: '#38bdf8' }}>整理结果：{extractResult.title}</h4>
             <p style={{ margin: '4px 0', fontSize: '13px' }}><strong>核心异议点：</strong>{extractResult.objection}</p>
             <p style={{ margin: '4px 0', fontSize: '13px' }}><strong>化解策略：</strong>{extractResult.strategy}</p>
             <div style={{ margin: '10px 0 0' }}>
@@ -246,7 +246,7 @@ export default function DesktopRepliesPage({ state, notify }: PageProps) {
               </div>
             </div>
             <div style={{ marginTop: '12px' }}>
-              <Button busy={busy} onClick={() => void runExtract(true)}><Check size={15} />确认将上述问答存入知识库</Button>
+              <Button busy={busy} onClick={() => void runExtract(true)}><Check size={15} />保存上述候选，等待审核</Button>
             </div>
           </div>
         )}

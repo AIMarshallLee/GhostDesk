@@ -8,6 +8,8 @@ export interface ReplyConversation { id: string; name: string; enabled: boolean 
 export type ReplyModelProtocol = 'gemini-native' | 'openai-vision';
 export interface DesktopReplyConfig {
   modelProtocol?: ReplyModelProtocol;
+  /** `selected` preserves the existing explicit selection model. `retrieve` searches only approved, enabled local knowledge for each new incoming message. */
+  knowledgeMode?: 'selected' | 'retrieve';
   conversations: ReplyConversation[]; layout: ReplyLayout; mode: 'manual' | 'auto';
   /** Legacy persisted `windows` remains readable so the UI can explicitly migrate it to USB before saving. */
   pollSeconds: number; maxRepliesPerHour: number; knowledgeIds: string[]; workflowId: string; inputBackend?: 'windows' | 'usb';

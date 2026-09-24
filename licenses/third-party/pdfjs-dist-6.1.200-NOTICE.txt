@@ -1,0 +1,9 @@
+PDF.js (pdfjs-dist) version 6.1.200 is bundled in unpdf@1.8.1 as dist/pdfjs.mjs.
+
+Upstream project: Mozilla PDF.js
+Upstream source commit: 6353acefe5007cd4899247a8c4e83cb7c9435a54
+License: Apache-2.0
+
+The upstream source tree at this commit does not contain a NOTICE file. This
+record preserves the bundled component identity and the source used for the
+accompanying Apache License 2.0 copy.

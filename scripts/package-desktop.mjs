@@ -26,7 +26,7 @@ if (await stat(join(electronCache, electronZip)).catch(() => false)) {
 await mkdir(stage, { recursive: true });
 // An explicit allowlist keeps local records, credentials and build tools out of the app.
 await cp(join(root, 'dist'), join(stage, 'dist'), { recursive: true });
-const desktopFiles = ['main.cjs', 'preload.cjs', 'native-paste.ps1', 'usb-serial.ps1', 'usb-channel.ps1', 'window-identity.ps1', 'cu-native.ps1'];
+const desktopFiles = ['main.cjs', 'preload.cjs', 'knowledge-import-worker.cjs', 'native-paste.ps1', 'usb-serial.ps1', 'usb-channel.ps1', 'window-identity.ps1', 'cu-native.ps1'];
 const licenseFiles = ['react', 'react-dom', 'lucide-react', '@fontsource-variable-dm-sans', '@fontsource-variable-noto-sans-sc'].map(name => `${name}.txt`);
 const runtimeLicenses = await readRuntimeLicenseManifest(root);
 await mkdir(join(stage, 'desktop-build', 'licenses'), { recursive: true });
@@ -44,7 +44,7 @@ const archive = join(release, 'FlowDesk-win32-x64.zip');
 const softwareRelease = join(release, 'windows-software', stamp);
 await mkdir(softwareRelease, { recursive: true });
 console.log('Packaging only dist, explicitly listed desktop runtime files, licenses, and the runtime manifest.');
-const [built] = await packager({ dir: stage, out: softwareRelease, name: 'FlowDesk', platform: 'win32', arch: 'x64', electronVersion: metadata.devDependencies.electron, electronZipDir, overwrite: false, asar: { unpack: '**/*.ps1' }, prune: false });
+const [built] = await packager({ dir: stage, out: softwareRelease, name: 'FlowDesk', platform: 'win32', arch: 'x64', electronVersion: metadata.devDependencies.electron, electronZipDir, overwrite: false, asar: { unpack: '**/{*.ps1,knowledge-import-worker.cjs}' }, prune: false });
 const executable = join(built, 'FlowDesk.exe');
 await stat(executable);
 await stat(join(built, 'resources', 'app.asar'));
@@ -61,6 +61,9 @@ delete smokeEnv.ELECTRON_RUN_AS_NODE;
 const smoke = await run(executable, ['--smoke-test'], { windowsHide: true, env: smokeEnv, timeout: 30000, maxBuffer: 500000 });
 console.log(smoke.stdout.trim());
 if (!smoke.stdout.includes('FlowDesk renderer loaded successfully.')) throw new Error('Packaged application did not report a successful renderer smoke test.');
+const knowledgeSmoke = await run(executable, ['--knowledge-smoke-test'], { windowsHide: true, env: smokeEnv, timeout: 45000, maxBuffer: 500000 });
+console.log(knowledgeSmoke.stdout.trim());
+if (!knowledgeSmoke.stdout.includes('FlowDesk knowledge import smoke passed.')) throw new Error('Packaged knowledge import smoke did not pass.');
 const usbSmoke = await run(executable, ['--usb-smoke-test'], { windowsHide: true, env: smokeEnv, timeout: 120000, maxBuffer: 500000 });
 console.log(usbSmoke.stdout.trim());
 if (!usbSmoke.stdout.includes('FlowDesk USB replies smoke passed.')) throw new Error('Packaged USB replies smoke did not pass.');
@@ -81,6 +84,9 @@ const repliesSmoke = await run(executable, ['--replies-smoke-test'], { windowsHi
 console.log(repliesSmoke.stdout.trim());
 if (!repliesSmoke.stdout.includes('FlowDesk desktop replies smoke passed.')) throw new Error('Packaged persistent desktop replies did not pass.');
 await cp(join(root, 'docs', '使用说明.txt'), join(built, '使用说明.txt'));
+await cp(join(root, 'docs', '客户知识库适配指南.md'), join(built, '客户知识库适配指南.md'));
+await cp(join(root, 'public', 'knowledge-template.csv'), join(built, 'knowledge-template.csv'));
+await cp(join(root, 'public', 'knowledge-evaluation-template.csv'), join(built, 'knowledge-evaluation-template.csv'));
 const packagedFirmware = extractFile(asarFile, join('desktop-build', 'firmware', 'flowdesk_usb.uf2'));
 await writeFile(join(built, 'FlowDesk-Pico-RP2040.uf2'), packagedFirmware);
 await writeFile(join(built, 'FlowDesk-Pico-RP2040.uf2.sha256'), `${createHash('sha256').update(packagedFirmware).digest('hex')}  FlowDesk-Pico-RP2040.uf2\n`);

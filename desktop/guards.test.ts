@@ -10,6 +10,10 @@ test('only known local API routes are accepted', () => {
   assert.equal(isAllowedRequest({ method: 'GET', path: 'https://example.com' }), false);
 });
 test('simulator bridge cannot reach workspace, secrets, native input or remote destinations', () => {
+  for (const path of ['/knowledge/import/preview', '/knowledge/import/commit', '/knowledge/review', '/knowledge/search', '/knowledge/evaluate']) {
+    assert.equal(isAllowedRequest({ method: 'POST', path }), true);
+    assert.equal(isSandboxRequest({ method: 'POST', path }), false);
+  }
   assert.equal(isSandboxRequest({ method: 'GET', path: '/sandbox/state' }), true);
   assert.equal(isAllowedRequest({ method: 'POST', path: '/sandbox/messages' }), true);
   assert.equal(isSandboxRequest({ method: 'POST', path: '/sandbox/conversations/lin' }), true);

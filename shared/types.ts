@@ -1,6 +1,6 @@
 export type Scenario = 'service' | 'community' | 'sales' | 'recruitment' | 'content';
 export type TaskStatus = 'draft' | 'review' | 'approved' | 'completed' | 'archived';
-export interface Knowledge { id: string; title: string; content: string; tags: string[]; enabled: boolean; createdAt: string; updatedAt: string }
+export interface Knowledge { id: string; title: string; content: string; tags: string[]; enabled: boolean; createdAt: string; updatedAt: string; question?: string; aliases?: string[]; scenario?: Scenario | 'all'; source?: string; sourceLocator?: string; reviewStatus?: 'pending' | 'approved'; approvedAt?: string; importId?: string }
 export interface Workflow { id: string; name: string; scenario: Scenario; description: string; instructions: string; greeting: string; enabled: boolean; createdAt: string; updatedAt: string }
 export interface Task { id: string; title: string; scenario: Scenario; workflowId: string; input: string; reply: string; rationale: string; knowledgeIds: string[]; status: TaskStatus; mode: 'demo' | 'live'; sourceName: string; createdAt: string; updatedAt: string }
 export interface AuditEvent { id: string; taskId?: string; action: string; detail: string; createdAt: string }

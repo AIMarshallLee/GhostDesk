@@ -23,7 +23,8 @@ test('模拟器规则不调用模型，live 仅发送测试文本，正式工作
   };
   try {
     await service.request({ method: 'PUT', path: '/settings', body: { provider: { baseUrl: 'http://127.0.0.1:9999/v1', model: 'fixture-model', temperature: 0 } } });
-    await service.request({ method: 'POST', path: '/knowledge', body: { title: '配送', content: 'PRIVATE_KNOWLEDGE_SENTINEL', enabled: true } });
+    const privateKnowledge = await service.request({ method: 'POST', path: '/knowledge', body: { title: '配送', content: 'PRIVATE_KNOWLEDGE_SENTINEL', enabled: true } });
+    await service.request({ method: 'POST', path: '/knowledge/review', body: { ids: [privateKnowledge.id], approved: true } });
     await service.request({ method: 'POST', path: '/tasks', body: { input: 'PRIVATE_TASK_SENTINEL' } });
     const original = await service.request({ method: 'GET', path: '/export' });
     assert.equal((await state()).provider.model, 'fixture-model');

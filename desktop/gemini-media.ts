@@ -1,3 +1,4 @@
+import { knowledgeAvailable } from '../server/knowledge';
 import { randomUUID } from 'node:crypto';
 import type { Interactions } from '@google/genai';
 import type { AppState } from '../shared/types';
@@ -93,7 +94,7 @@ export function createGeminiMediaController(options: {
         const credentials = await run(options.getCredentials);
         const workspace = await run(options.getWorkspace);
         const knowledge = input.knowledgeIds.map(id => {
-          const item = workspace.knowledge.find(row => row.id === id && row.enabled);
+          const item = workspace.knowledge.find(row => row.id === id && knowledgeAvailable(row));
           if (!item) throw new Error('所选知识已禁用或删除。');
           return { title: item.title, content: item.content };
         });

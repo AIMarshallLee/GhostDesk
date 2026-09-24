@@ -11,10 +11,13 @@ const waitUntil = async (check: () => Promise<boolean> | boolean, message: strin
   while (Date.now() < end) { if (await check()) return; await new Promise(resolve => setTimeout(resolve, 10)); }
   throw new Error(`超时：${message}`);
 };
+const cleanDir = async (dir: string) => {
+  await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 }).catch(() => {});
+};
 const setup = async (generate?: (text: string) => Promise<string>) => {
   const dir = await mkdtemp(join(tmpdir(), 'flowdesk-auto-'));
   const auto = await createAutopilot({ dataDir: dir, generate: async text => generate ? generate(text) : `live:${text}` });
-  return { dir, auto, close: async () => { await auto.close(); await rm(dir, { recursive: true, force: true }); } };
+  return { dir, auto, close: async () => { await auto.close(); await cleanDir(dir); } };
 };
 const state = (auto: Auto) => auto.request('GET', '/sandbox/state') as Promise<any>;
 const start = (auto: Auto, replyMode: 'auto' | 'manual' = 'auto') => auto.request('POST', '/sandbox/control', { action: 'start', mode: 'rules', replyMode });
@@ -44,7 +47,7 @@ test('Windows 瞬时替换锁会重试，不暂停三条并发消息', async () 
     await Promise.all(['lin', 'chen', 'zhou'].map((conversationId, index) => auto.request('POST', '/sandbox/messages', { conversationId, text: `锁冲突 ${index}`, id: `lock-${index}` })));
     await waitUntil(async () => (await state(auto)).jobs.length === 3 && (await state(auto)).jobs.every((job: any) => job.status === 'sent'), '替换重试后的三条发送');
     const s = await state(auto); assert.equal(activated, true); assert.equal(simulated, 2); assert.equal(s.automation.status, 'running'); assert.equal(s.stats.sent, 3); assert.equal(customers(s).length, 3);
-  } finally { await auto.close(); await rm(dir, { recursive: true, force: true }); }
+  } finally { await auto.close(); await cleanDir(dir); }
 });
 test('Windows 持续替换锁达到上限后暂停，不会无限重试', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'flowdesk-auto-')); let failures = 0, activated = false;
@@ -63,7 +66,7 @@ test('Windows 持续替换锁达到上限后暂停，不会无限重试', async 
     await waitUntil(async () => (await state(auto)).automation.status === 'paused', '持续锁后暂停');
     const s = await state(auto); assert.equal(activated, true); assert.equal(failures, 5); assert.equal(s.jobs.filter((job: any) => job.status === 'handoff').length, 1);
     await new Promise(resolve => setTimeout(resolve, 120)); assert.equal(failures, 5);
-  } finally { await auto.close(); await rm(dir, { recursive: true, force: true }); }
+  } finally { await auto.close(); await cleanDir(dir); }
 });
 test('跨会话回复历史严格隔离', async () => {
   const ctx = await setup(); try {

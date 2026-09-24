@@ -1,10 +1,20 @@
 import { cp, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 
-export const computerUseRuntimeRoots = ['@ui-tars/sdk', 'uuid', 'pinyin-pro', '@google/genai'];
+export const computerUseRuntimeRoots = ['@ui-tars/sdk', 'uuid', 'pinyin-pro', '@google/genai', 'csv-parse', 'exceljs', 'mammoth', 'unpdf'];
 const legalFile = /^(license|licence|copying|notice)(?:[._-].*)?$/i;
 const safeRelativeFile = /^(?:runtime\/[A-Za-z0-9@._-]+\/[A-Za-z0-9@._-]+|runtime-manifest\.json)$/;
 const vendoredNotices = {
+  'saxes@5.0.1': {
+    file: 'licenses/third-party/saxes-5.0.1.txt',
+    sourceUrl: 'https://raw.githubusercontent.com/lddubeau/saxes/6ef6a275b20f19cb67808daf0d8f64e06aaf5b0e/LICENSE',
+    sourceSha: '6ef6a275b20f19cb67808daf0d8f64e06aaf5b0e'
+  },
+  'isarray@1.0.0': {
+    file: 'licenses/third-party/isarray-1.0.0.txt',
+    sourceUrl: 'https://raw.githubusercontent.com/juliangruber/isarray/2a23a281f369e9ae06394c0fb4d2381355a6ba33/README.md',
+    sourceSha: '2a23a281f369e9ae06394c0fb4d2381355a6ba33'
+  },
   '@tokenizer/token@0.3.0': {
     file: 'licenses/third-party/tokenizer-token-0.3.0.txt',
     sourceUrl: 'https://raw.githubusercontent.com/Borewit/tokenizer-token/e068a455370090f44c757946b8571bb3fb1f117e/README.md',
@@ -29,6 +39,16 @@ const vendoredNotices = {
     file: 'licenses/third-party/data-uri-to-buffer-4.0.1.txt',
     sourceUrl: 'https://raw.githubusercontent.com/TooTallNate/node-data-uri-to-buffer/85cd8c854aefbf1bb636789d80364cfac8ea1583/README.md',
     sourceSha: '85cd8c854aefbf1bb636789d80364cfac8ea1583'
+  }
+};
+const bundledRuntimeNotices = {
+  'pdfjs-dist@6.1.200': {
+    files: [
+      'licenses/third-party/pdfjs-dist-6.1.200-LICENSE.txt',
+      'licenses/third-party/pdfjs-dist-6.1.200-NOTICE.txt'
+    ],
+    sourceUrl: 'https://raw.githubusercontent.com/mozilla/pdf.js/6353acefe5007cd4899247a8c4e83cb7c9435a54/LICENSE',
+    sourceSha: '6353acefe5007cd4899247a8c4e83cb7c9435a54'
   }
 };
 
@@ -97,6 +117,19 @@ export async function copyRuntimeLicenses({ root = process.cwd(), outputDirector
     for (const dependency of Object.keys({ ...metadata.dependencies, ...metadata.optionalDependencies }).sort()) {
       pending.push({ name: dependency, fromDirectory: packageDirectory });
     }
+  }
+  for (const [identity, bundled] of Object.entries(bundledRuntimeNotices)) {
+    if (!(await Promise.all(bundled.files.map(file => existingFile(join(absoluteRoot, file))))).every(Boolean)) throw new Error(`Bundled runtime notice is missing for ${identity}`);
+    const [name, version] = identity.split('@');
+    const destinationDirectory = join(runtimeOutput, packageDirectoryName(name, version));
+    await mkdir(destinationDirectory, { recursive: true });
+    const licenses = [];
+    for (const file of bundled.files) {
+      const output = join(destinationDirectory, file.endsWith('LICENSE.txt') ? 'LICENSE.txt' : 'NOTICE.txt');
+      await cp(join(absoluteRoot, file), output, { force: true });
+      licenses.push(relative(absoluteOutput, output).replaceAll('\\', '/'));
+    }
+    packages.push({ name, version, license: 'Apache-2.0', licenses, vendoredSource: { sourceUrl: bundled.sourceUrl, sourceSha: bundled.sourceSha, sourceFile: bundled.files } });
   }
   packages.sort((left, right) => left.name.localeCompare(right.name) || left.version.localeCompare(right.version));
   const files = packages.flatMap(entry => entry.licenses).sort();

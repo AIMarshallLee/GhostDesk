@@ -15,7 +15,7 @@ const receipt = { zip, bytes: (await stat(zip)).size, sha256: createHash('sha256
 const asar = join(dirname(receipt.executable), 'resources', 'app.asar');
 receipt.version = JSON.parse(extractFile(asar, 'package.json').toString()).version;
 if (receipt.version !== JSON.parse(await readFile('package.json', 'utf8')).version) throw new Error('Packaged version differs from source.');
-const desktopFiles = ['main.cjs', 'preload.cjs', 'native-paste.ps1', 'usb-serial.ps1', 'usb-channel.ps1', 'window-identity.ps1', 'cu-native.ps1'];
+const desktopFiles = ['main.cjs', 'preload.cjs', 'knowledge-import-worker.cjs', 'native-paste.ps1', 'usb-serial.ps1', 'usb-channel.ps1', 'window-identity.ps1', 'cu-native.ps1'];
 const licenseFiles = ['react', 'react-dom', 'lucide-react', '@fontsource-variable-dm-sans', '@fontsource-variable-noto-sans-sc'].map(n => `licenses/${n}.txt`);
 const runtimeLicenses = await readRuntimeLicenseManifest(process.cwd());
 licenseFiles.push(...runtimeLicenses.files.map(name => `licenses/${name}`));
@@ -46,6 +46,9 @@ if (instructions !== await readFile('docs/使用说明.txt', 'utf8')) throw new 
 for (const [packaged, source] of [['FlowDesk-Pico-RP2040.uf2', 'firmware/build/flowdesk_usb_bridge.uf2'], ['Pico-到货烧录与测试.md', 'docs/Pico-到货烧录与测试.md']]) {
   if (!(await readFile(join(dirname(receipt.executable), packaged))).equals(await readFile(source))) throw new Error(`Packaged companion file differs: ${packaged}`);
 }
+for (const [packaged, source] of [['客户知识库适配指南.md', 'docs/客户知识库适配指南.md'], ['knowledge-template.csv', 'public/knowledge-template.csv'], ['knowledge-evaluation-template.csv', 'public/knowledge-evaluation-template.csv']]) {
+  if (!(await readFile(join(dirname(receipt.executable), packaged))).equals(await readFile(source))) throw new Error(`Packaged knowledge companion file differs: ${packaged}`);
+}
 const uf2 = await readFile(join(dirname(receipt.executable), 'FlowDesk-Pico-RP2040.uf2'));
 if (!uf2.length || uf2.length % 512) throw new Error('Invalid UF2 length.');
 for (let offset = 0; offset < uf2.length; offset += 512) {
@@ -58,6 +61,8 @@ const env = { ...process.env, FLOWDESK_SMOKE_DIR: userData };
 delete env.ELECTRON_RUN_AS_NODE;
 const result = await promisify(execFile)(receipt.executable, ['--smoke-test'], { cwd: userData, env, windowsHide: true, timeout: 30000, maxBuffer: 500000 });
 if (!result.stdout.includes('FlowDesk renderer loaded successfully. Simulator IPC relay ready; parent access blocked.')) throw new Error('Extracted application did not report readiness.');
+const knowledgeResult = await promisify(execFile)(receipt.executable, ['--knowledge-smoke-test'], { cwd: userData, env, windowsHide: true, timeout: 45000, maxBuffer: 500000 });
+if (!knowledgeResult.stdout.includes('FlowDesk knowledge import smoke passed.')) throw new Error('Extracted knowledge import smoke did not pass.');
 const usbUserData = await mkdtemp(join(tmpdir(), 'flowdesk-portable-usb-'));
 const usbResult = await promisify(execFile)(receipt.executable, ['--usb-smoke-test'], { cwd: usbUserData, env: { ...env, FLOWDESK_SMOKE_DIR: usbUserData }, windowsHide: true, timeout: 120000, maxBuffer: 500000 });
 if (!usbResult.stdout.includes('FlowDesk USB replies smoke passed.')) throw new Error('Extracted USB replies smoke did not pass.');
@@ -77,6 +82,7 @@ const repliesEnv = { ...process.env, FLOWDESK_SMOKE_DIR: repliesUserData };
 delete repliesEnv.ELECTRON_RUN_AS_NODE;
 const repliesResult = await promisify(execFile)(receipt.executable, ['--replies-smoke-test'], { cwd: repliesUserData, env: repliesEnv, windowsHide: true, timeout: 120000, maxBuffer: 500000 });
 if (!repliesResult.stdout.includes('FlowDesk desktop replies smoke passed.')) throw new Error('Extracted persistent desktop replies did not pass.');
+receipt.knowledgeSmoke = knowledgeResult.stdout.trim();
 receipt.asarEntries = entries.length;
 receipt.verifiedRuntimeFiles = files.length;
 receipt.freshDirectorySmoke = result.stdout.trim();

@@ -1,6 +1,6 @@
 {
   "name": "flowdesk",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "private": true,
   "description": "FlowDesk local-first visual operations assistant",
   "type": "module",
@@ -22,10 +22,14 @@
     "@fontsource-variable/noto-sans-sc": "5.3.0",
     "@google/genai": "2.22.0",
     "@ui-tars/sdk": "1.2.3",
+    "csv-parse": "7.0.2",
+    "exceljs": "4.4.0",
     "lucide-react": "1.45.0",
+    "mammoth": "1.12.3",
     "pinyin-pro": "3.29.4",
     "react": "19.3.0",
     "react-dom": "19.3.0",
+    "unpdf": "1.8.1",
     "uuid": "11.1.0"
   },
   "devDependencies": {
@@ -39,5 +43,10 @@
     "tsx": "4.23.13",
     "typescript": "7.0.2",
     "vite": "8.3.0"
+  },
+  "overrides": {
+    "exceljs": {
+      "unzipper": "0.12.3"
+    }
   }
 }

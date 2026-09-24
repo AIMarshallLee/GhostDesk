@@ -5,7 +5,9 @@ import { computerUseRuntimeRoots, copyRuntimeLicenses } from './runtime-licenses
 
 await mkdir('desktop-build', { recursive: true });
 await Promise.all([
-  build({ entryPoints: ['desktop/main.ts'], outfile: 'desktop-build/main.cjs', bundle: true, platform: 'node', target: 'node20', format: 'cjs', external: ['electron'] }),
+  // unzipper's optional S3 helper is unreachable: knowledge import only accepts local bytes.
+  build({ entryPoints: ['desktop/main.ts'], outfile: 'desktop-build/main.cjs', bundle: true, platform: 'node', target: 'node20', format: 'cjs', external: ['electron', '@aws-sdk/client-s3'], define: { 'process.env.FLOWDESK_DEV_MODE': '"0"', 'import.meta.url': '""' } }),
+  build({ entryPoints: ['server/knowledge-import-worker.ts'], outfile: 'desktop-build/knowledge-import-worker.cjs', bundle: true, platform: 'node', target: 'node20', format: 'cjs', external: ['@aws-sdk/client-s3'] }),
   build({ entryPoints: ['desktop/preload.ts'], outfile: 'desktop-build/preload.cjs', bundle: true, platform: 'node', target: 'node20', format: 'cjs', external: ['electron'] })
 ]);
 await Promise.all(['native-paste.ps1', 'usb-serial.ps1', 'usb-channel.ps1', 'window-identity.ps1', 'cu-native.ps1'].map((name) => copyFile(`desktop/${name}`, `desktop-build/${name}`)));

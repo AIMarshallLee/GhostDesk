@@ -1,3 +1,4 @@
+import { runKnowledgeSmoke } from './knowledge-smoke';
 import { createUsbDevice } from './usb-device';
 import { requireUsbHardware } from './hardware-gate';
 import { registerUsbIpc } from './usb-ipc';
@@ -28,10 +29,10 @@ const execFileAsync = promisify(execFile);
 type CapturedWindow = { sourceId: string; name: string; hwnd?: string; process?: string; pid?: number; startedAt?: string };
 const captured = new Map<string, CapturedWindow>();
 const rendererUrl = 'flowdesk://app/index.html';
-const fixtureTest = ['--gemini-replies-smoke-test', '--gemini-smoke-test', '--cu-smoke-test', '--replies-smoke-test', '--replies-native-smoke-test', '--replies-soak-test', '--usb-smoke-test', '--usb-soak-test'].some(flag => process.argv.includes(flag));
+const fixtureTest = ['--knowledge-smoke-test', '--gemini-replies-smoke-test', '--gemini-smoke-test', '--cu-smoke-test', '--replies-smoke-test', '--replies-native-smoke-test', '--replies-soak-test', '--usb-smoke-test', '--usb-soak-test'].some(flag => process.argv.includes(flag));
 protocol.registerSchemesAsPrivileged([{ scheme: 'flowdesk', privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
-if (process.argv.some(arg => ['--smoke-test', '--gemini-replies-smoke-test', '--gemini-smoke-test', '--cu-smoke-test', '--replies-smoke-test', '--replies-native-smoke-test', '--replies-soak-test', '--usb-smoke-test', '--usb-soak-test'].includes(arg))) app.setPath('userData', process.env.FLOWDESK_SMOKE_DIR ?? join(app.getPath('temp'), 'flowdesk-smoke'));
-if (process.argv.some(arg => ['--gemini-replies-smoke-test', '--gemini-smoke-test', '--cu-smoke-test', '--replies-smoke-test', '--replies-native-smoke-test', '--replies-soak-test', '--usb-smoke-test', '--usb-soak-test'].includes(arg))) app.disableHardwareAcceleration();
+if (process.argv.some(arg => ['--smoke-test', '--knowledge-smoke-test', '--gemini-replies-smoke-test', '--gemini-smoke-test', '--cu-smoke-test', '--replies-smoke-test', '--replies-native-smoke-test', '--replies-soak-test', '--usb-smoke-test', '--usb-soak-test'].includes(arg))) app.setPath('userData', process.env.FLOWDESK_SMOKE_DIR ?? join(app.getPath('temp'), 'flowdesk-smoke'));
+if (process.argv.some(arg => ['--knowledge-smoke-test', '--gemini-replies-smoke-test', '--gemini-smoke-test', '--cu-smoke-test', '--replies-smoke-test', '--replies-native-smoke-test', '--replies-soak-test', '--usb-smoke-test', '--usb-soak-test'].includes(arg))) app.disableHardwareAcceleration();
 const usbScript = () => app.isPackaged ? join(process.resourcesPath, 'app.asar.unpacked', 'desktop-build', 'usb-channel.ps1') : join(__dirname, 'usb-channel.ps1');
 const identityScript = () => app.isPackaged ? join(process.resourcesPath, 'app.asar.unpacked', 'desktop-build', 'window-identity.ps1') : join(__dirname, 'window-identity.ps1');
 const firmwareArtifact = () => join(__dirname, 'firmware', 'flowdesk_usb.uf2');
@@ -98,7 +99,7 @@ app.whenReady().then(async () => {
   protocol.handle('flowdesk', async request => {
     const url = new URL(request.url);
     const simulatorRelay = url.pathname === '/simulator.html' && /^relay=[0-9a-f-]{36}$/.test(url.search.slice(1));
-    if (request.method !== 'GET' || url.host !== 'app' || url.username || url.password || (url.search && !simulatorRelay) || !(/^\/assets\/[a-zA-Z0-9_.-]+$/.test(url.pathname) || ['/index.html', '/favicon.svg', '/simulator.js', '/simulator.css', '/cu-fixture.html', '/cu-fixture.css', '/cu-fixture.js', '/desktop-chat-fixture.html', '/desktop-chat-fixture.css', '/desktop-chat-fixture.js'].includes(url.pathname) || simulatorRelay)) return new Response('Not found', { status: 404 });
+    if (request.method !== 'GET' || url.host !== 'app' || url.username || url.password || (url.search && !simulatorRelay) || !(/^\/assets\/[a-zA-Z0-9_.-]+$/.test(url.pathname) || ['/knowledge-template.csv', '/knowledge-evaluation-template.csv', '/index.html', '/favicon.svg', '/simulator.js', '/simulator.css', '/cu-fixture.html', '/cu-fixture.css', '/cu-fixture.js', '/desktop-chat-fixture.html', '/desktop-chat-fixture.css', '/desktop-chat-fixture.js'].includes(url.pathname) || simulatorRelay)) return new Response('Not found', { status: 404 });
     try {
       if (simulatorRelay) {
         const html = (await readFile(join(__dirname, '..', 'dist', 'simulator.html'), 'utf8')).replace('<head>', `<head><meta name="flowdesk-relay" content="${url.searchParams.get('relay')}">`);
@@ -110,6 +111,11 @@ app.whenReady().then(async () => {
       return new Response(response.body, { status: response.status, headers });
     } catch { return new Response('Not found', { status: 404 }); }
   });
+  if (process.argv.includes('--knowledge-smoke-test')) {
+    try { await runKnowledgeSmoke(app.isPackaged ? join(process.resourcesPath, 'app.asar.unpacked', 'desktop-build', 'knowledge-import-worker.cjs') : join(__dirname, 'knowledge-import-worker.cjs')); app.exit(0); }
+    catch (error) { console.error('FlowDesk knowledge import smoke failed:', error instanceof Error ? error.message : 'unknown failure'); app.exit(1); }
+    return;
+  }
   if (process.argv.includes('--gemini-replies-smoke-test')) {
     const timeout = setTimeout(() => { console.error('FlowDesk Gemini persistent smoke timed out.'); app.exit(1); }, 230000);
     try { await runGeminiRepliesSmoke(); clearTimeout(timeout); app.exit(0); }
@@ -155,7 +161,7 @@ app.whenReady().then(async () => {
   }
   const { createService, LiveModelHardwareUnavailable } = await import('../server/service.ts');
   const usbDevice = createUsbDevice(usbScript());
-  const service = await createService({ dataDir: join(app.getPath('userData'), 'data'), secrets: new EncryptedSecretStore(join(app.getPath('userData'), 'secrets.json')), beforeLiveModel: async () => {
+  const service = await createService({ knowledgeWorkerPath: app.isPackaged ? join(process.resourcesPath, 'app.asar.unpacked', 'desktop-build', 'knowledge-import-worker.cjs') : join(__dirname, 'knowledge-import-worker.cjs'), dataDir: join(app.getPath('userData'), 'data'), secrets: new EncryptedSecretStore(join(app.getPath('userData'), 'secrets.json')), beforeLiveModel: async () => {
     try { await requireUsbHardware(usbDevice); } catch { throw new LiveModelHardwareUnavailable(); }
   } });
   const trusted = (event: Electron.IpcMainInvokeEvent) => assertMainFrame(event, rendererUrl);
@@ -249,7 +255,8 @@ app.whenReady().then(async () => {
       || (/^\/tasks\/[^/]+\/generate$/.test(request.path) && body.mode === 'live')
       || (request.path === '/sandbox/control' && body.action === 'start' && body.mode !== 'rules'));
     if (needsHardware) await requireUsbHardware(usbDevice);
-    const changesContext = request.method !== 'GET' && /^\/(settings|import|provider\/key|knowledge(?:\/|$)|workflows(?:\/|$)|learning(?:\/|$))/.test(request.path);
+    const readOnlyKnowledge = ['/knowledge/search', '/knowledge/evaluate', '/knowledge/import/preview'].includes(request.path);
+    const changesContext = request.method !== 'GET' && !readOnlyKnowledge && /^\/(settings|import|provider\/key|knowledge(?:\/|$)|workflows(?:\/|$)|learning(?:\/|$)|playbooks(?:\/|$))/.test(request.path);
     if (!changesContext) return service.request(request);
     assertRepliesIdle(); workspaceMutating++;
     try { return await service.request(request); } finally { workspaceMutating--; }

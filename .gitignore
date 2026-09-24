@@ -1,4 +1,4 @@
-﻿# Dependencies
+# Dependencies
 node_modules/
 
 # Build artifacts
@@ -25,6 +25,8 @@ data/
 # Firmware build intermediates
 firmware/build/
 firmware/.tools/
+.pio/
+firmware/**/.pio/
 
 # OS and IDE
 .DS_Store

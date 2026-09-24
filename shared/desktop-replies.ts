@@ -52,3 +52,30 @@ export const defaultReplyLayout: ReplyLayout = {
   composer: { x: .28, y: .73, width: .65, height: .14 },
   send: { x: .81, y: .89, width: .14, height: .08 },
 };
+
+/** 微信电脑版 (WeChat.exe) 标准窗口比例预设 */
+export const wechatReplyLayout: ReplyLayout = {
+  conversations: { x: 0.07, y: 0.08, width: 0.25, height: 0.90 },
+  header: { x: 0.33, y: 0.02, width: 0.65, height: 0.07 },
+  messages: { x: 0.33, y: 0.10, width: 0.65, height: 0.60 },
+  composer: { x: 0.33, y: 0.72, width: 0.65, height: 0.20 },
+  send: { x: 0.88, y: 0.93, width: 0.10, height: 0.05 },
+};
+
+/** 企业微信电脑版 (WXWork.exe) 标准窗口比例预设 */
+export const wecomReplyLayout: ReplyLayout = {
+  conversations: { x: 0.07, y: 0.08, width: 0.25, height: 0.90 },
+  header: { x: 0.33, y: 0.02, width: 0.65, height: 0.07 },
+  messages: { x: 0.33, y: 0.10, width: 0.65, height: 0.60 },
+  composer: { x: 0.33, y: 0.72, width: 0.65, height: 0.20 },
+  send: { x: 0.88, y: 0.93, width: 0.10, height: 0.05 },
+};
+
+/** 钉钉电脑版 (DingTalk.exe) 标准窗口比例预设 */
+export const dingtalkReplyLayout: ReplyLayout = {
+  conversations: { x: 0.06, y: 0.08, width: 0.26, height: 0.90 },
+  header: { x: 0.33, y: 0.02, width: 0.65, height: 0.07 },
+  messages: { x: 0.33, y: 0.10, width: 0.65, height: 0.60 },
+  composer: { x: 0.33, y: 0.72, width: 0.65, height: 0.20 },
+  send: { x: 0.88, y: 0.93, width: 0.10, height: 0.05 },
+};

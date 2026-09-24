@@ -6,11 +6,13 @@ import test from 'node:test';
 import { createService } from './service.ts';
 import { PRESET_PLAYBOOKS, extractPlaybookFromChat, qualifyLeadFromText } from './playbook-presets.ts';
 
-test('PRESET_PLAYBOOKS contains 3 battle-tested industry packs', () => {
-  assert.equal(PRESET_PLAYBOOKS.length, 3);
+test('PRESET_PLAYBOOKS contains 5 battle-tested industry packs', () => {
+  assert.equal(PRESET_PLAYBOOKS.length, 5);
   assert.ok(PRESET_PLAYBOOKS.some(p => p.id === 'playbook_social_sales'));
   assert.ok(PRESET_PLAYBOOKS.some(p => p.id === 'playbook_ecommerce_support'));
   assert.ok(PRESET_PLAYBOOKS.some(p => p.id === 'playbook_high_ticket_consulting'));
+  assert.ok(PRESET_PLAYBOOKS.some(p => p.id === 'playbook_wecom_sales'));
+  assert.ok(PRESET_PLAYBOOKS.some(p => p.id === 'playbook_wechat_vip'));
 });
 
 test('extractPlaybookFromChat extracts Q&A pairs, objections, and strategies from chat transcript', () => {
@@ -50,7 +52,7 @@ test('Service endpoints for playbooks and leads install, extract, and record sea
     // 1. Get presets
     const presetsRes = await service.request({ method: 'GET', path: '/playbooks/presets' });
     assert.equal(presetsRes.ok, true);
-    assert.equal(presetsRes.playbooks.length, 3);
+    assert.equal(presetsRes.playbooks.length, 5);
 
     // 2. Install preset
     const installRes = await service.request({

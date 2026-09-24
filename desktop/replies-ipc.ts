@@ -26,6 +26,8 @@ export async function registerDesktopReplies(options: {
   getGeminiSummary(): Promise<{ baseUrl: string; model: string; hasKey: boolean }>;
   getWorkspace(): Promise<AppState>;
   recordLead?: (conversationName: string, text: string) => Promise<unknown>;
+  onReplyDelivered?: (conversationName: string, reply: string) => Promise<unknown> | void;
+  onHandoff?: (conversationName: string, detail: string) => Promise<unknown> | void;
 }) {
   let fixture: Awaited<ReturnType<typeof createDesktopRepliesFixture>> | undefined;
   let model: Pick<ReturnType<typeof createReplyModel>, 'readScene' | 'readIme' | 'generate'> | undefined;
@@ -41,6 +43,12 @@ export async function registerDesktopReplies(options: {
     directory: options.directory,
     onIncomingLead: options.recordLead ? async (name, text) => {
       try { await options.recordLead!(name, text); } catch { /* best effort */ }
+    } : undefined,
+    onReplyDelivered: options.onReplyDelivered ? async (name, reply) => {
+      try { await options.onReplyDelivered!(name, reply); } catch { /* best effort */ }
+    } : undefined,
+    onHandoff: options.onHandoff ? async (name, detail) => {
+      try { await options.onHandoff!(name, detail); } catch { /* best effort */ }
     } : undefined,
     async createSurface(id, config) {
       const target = targetFor(id);

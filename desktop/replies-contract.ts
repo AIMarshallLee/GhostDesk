@@ -27,5 +27,7 @@ export interface DesktopRepliesDependencies {
   context(config: DesktopReplyConfig, query?: string): Promise<{ knowledge: string; instructions: string; knowledgeIds?: string[] }>;
   generate(input: ReplyGenerationInput, signal: AbortSignal): Promise<string>;
   onIncomingLead?: (conversationName: string, text: string) => Promise<unknown> | void;
+  onReplyDelivered?: (conversationName: string, reply: string) => Promise<unknown> | void;
+  onHandoff?: (conversationName: string, detail: string) => Promise<unknown> | void;
   now?: () => number; setTimer?: typeof setTimeout; clearTimer?: typeof clearTimeout;
 }

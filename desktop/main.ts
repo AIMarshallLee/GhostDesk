@@ -1,3 +1,4 @@
+import { notifyHardwareBuddy } from './buddy-notify';
 import { runKnowledgeSmoke } from './knowledge-smoke';
 import { createUsbDevice } from './usb-device';
 import { requireUsbHardware } from './hardware-gate';
@@ -176,8 +177,24 @@ app.whenReady().then(async () => {
   replies = await registerDesktopReplies({ trusted, directory: join(app.getPath('userData'), 'desktop-replies'), scriptPath, usbDevice, getWorkspace,
     getCredentials: service.desktopModelCredentials, getGeminiCredentials: computerUse.getGeminiCredentials, getGeminiSummary: computerUse.getGeminiSummary, selectedTarget: computerUse.selectedTarget,
     recordLead: async (conversationName: string, text: string) => {
-      try { await service.request({ method: 'POST', path: '/leads/qualify', body: { conversationName, text } }); }
-      catch { /* best effort */ }
+      try {
+        const res = await service.request({ method: 'POST', path: '/leads/qualify', body: { conversationName, text } }) as any;
+        if (res && res.lead) {
+          if (res.lead.intent === 'high' || res.lead.phone) {
+            const label = res.lead.phone ? `🔥线索电话:${res.lead.phone}` : `🔥高意向:${conversationName}`;
+            notifyHardwareBuddy('done', label);
+          } else if (res.lead.intent === 'complaint') {
+            notifyHardwareBuddy('error', `⚠️客诉预警:${conversationName}`);
+          }
+        }
+      } catch { /* best effort */ }
+    },
+    onReplyDelivered: (name: string, reply: string) => {
+      const summary = reply.length > 12 ? reply.slice(0, 10) + '...' : reply;
+      notifyHardwareBuddy('done', `[已回复] ${name}: ${summary}`);
+    },
+    onHandoff: (name: string, detail: string) => {
+      notifyHardwareBuddy('error', `⚠️[转人工] ${name}`);
     },
     assertOtherIdle: () => { if (nativeInputBusy || workspaceMutating || computerUse.controller.isBusy() || media?.isActive()) throw new Error('请等待设置保存、桌面输入、附件分析或停止单次电脑操作。'); },
   });

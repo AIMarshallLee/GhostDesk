@@ -1253,57 +1253,89 @@ void loop() {
       tab2LongTriggered = false;
     }
 
-    // ── 特殊模式：触控鼠标连续滑动画板 (Y: 48 ~ 192)，不施加单次按下锁 ──
+    // ── 特殊模式：触控鼠标高精度滑动画板 (Y: 48 ~ 192) ──
     if (currentMode == MODE_TOUCH_MOUSE && ty > 48 && ty < 192) {
       if (tx >= 268) {
         // 右侧垂直阻尼滚轮滑轨 (X >= 268)
         if (state.mouseLastY > 0) {
           int dy = ty - state.mouseLastY;
-          if (abs(dy) >= 3) {
+          if (abs(dy) >= 6) { // 阻尼过滤，防止轻微手抖导致网页乱滚
             int8_t wheel = (dy < 0) ? 1 : -1;
             if (BleCombo.isConnected()) BleCombo.moveMouse(0, 0, wheel);
+            Serial.printf("MOUSE:0,0,%d\n", wheel);
             state.mouseLastY = ty;
           }
         } else {
           state.mouseLastY = ty;
         }
       } else {
-        // 主触控板移动区 (动态非线性加速度曲线：微动像素级精准瞄准，快滑跨屏飞跃！)
+        // 主触控板移动区 (MacBook 触控板手感：指哪打哪，杜绝乱窜)
         state.mouseVisualX = tx;
         state.mouseVisualY = ty;
-        if (state.mouseLastX > 0 && state.mouseLastY > 0) {
-          int rawDx = tx - state.mouseLastX;
-          int rawDy = ty - state.mouseLastY;
-          float dist = sqrtf((float)(rawDx * rawDx + rawDy * rawDy));
-          float scale = 1.0f;
-          if (dist < 3.0f) {
-            scale = 0.9f; // 微动像素级瞄准，绝不飘走
-          } else if (dist < 10.0f) {
-            scale = 1.6f + (dist - 3.0f) * 0.15f; // 中速平滑线性跟手
-          } else {
-            scale = 2.8f + (dist - 10.0f) * 0.18f; // 快速滑掠跨屏飞跃
-            if (scale > 5.5f) scale = 5.5f;
-          }
-          int moveX = (int)(rawDx * scale);
-          int moveY = (int)(rawDy * scale);
-          if (moveX > 120) moveX = 120;
-          if (moveX < -120) moveX = -120;
-          if (moveY > 120) moveY = 120;
-          if (moveY < -120) moveY = -120;
-          if (moveX != 0 || moveY != 0) {
-            if (BleCombo.isConnected()) BleCombo.moveMouse((int8_t)moveX, (int8_t)moveY, 0);
-          }
-          state.mouseLastX = tx;
-          state.mouseLastY = ty;
-        } else {
+
+        // 核心 1：若刚落指 (touch.wasPressed) 或坐标未锚定，先记录基准点，绝不发送位移！
+        if (touch.wasPressed() || state.mouseLastX < 0 || state.mouseLastY < 0) {
           state.mouseLastX = tx;
           state.mouseLastY = ty;
           state.mouseTouchStartX = tx;
           state.mouseTouchStartY = ty;
           state.mouseTouchStartTime = now;
+        } else {
+          int rawDx = tx - state.mouseLastX;
+          int rawDy = ty - state.mouseLastY;
+
+          // 核心 2：杜绝换手大跳跃。单帧如果位移超过 22 像素，说明手指抬起换位置了，重新锚定，不移动光标！
+          if (abs(rawDx) > 22 || abs(rawDy) > 22) {
+            state.mouseLastX = tx;
+            state.mouseLastY = ty;
+          } else {
+            float dist = sqrtf((float)(rawDx * rawDx + rawDy * rawDy));
+
+            // 核心 3：死区过滤。电容屏电气噪声小于 1.2px 直接忽略，手指静止时光标稳若磐石！
+            if (dist >= 1.2f) {
+              float scale = 1.0f;
+              // 核心 4：细腻温润的苹果非线性加速度曲线
+              if (dist < 3.5f) {
+                // 慢移微调区：0.75x 细腻慢速微移，专为点小按钮、文字光标设计，指哪打哪！
+                scale = 0.75f;
+              } else if (dist < 8.5f) {
+                // 中速正常滑动：1.1x ~ 1.7x 平滑线性跟随
+                scale = 1.1f + (dist - 3.5f) * 0.12f;
+              } else {
+                // 快速甩滑：2.0x ~ 3.2x 跨屏飞跃，但最高严格封顶 3.2x，绝不飞丢！
+                scale = 2.0f + (dist - 8.5f) * 0.15f;
+                if (scale > 3.2f) scale = 3.2f;
+              }
+
+              int moveX = (int)(rawDx * scale);
+              int moveY = (int)(rawDy * scale);
+
+              // 核心 5：单帧步长严格限幅 [-16, 16]，绝不飞窜！
+              if (moveX > 16) moveX = 16;
+              if (moveX < -16) moveX = -16;
+              if (moveY > 16) moveY = 16;
+              if (moveY < -16) moveY = -16;
+
+              if (moveX != 0 || moveY != 0) {
+                // 双通道输出：BLE 蓝牙 + USB 串口同时发送！
+                if (BleCombo.isConnected()) {
+                  BleCombo.moveMouse((int8_t)moveX, (int8_t)moveY, 0);
+                }
+                Serial.printf("MOUSE:%d,%d,0\n", moveX, moveY);
+              }
+              state.mouseLastX = tx;
+              state.mouseLastY = ty;
+            }
+          }
         }
       }
-      renderScreen();
+
+      // 核心 6：UI 渲染按 33ms 限频 (30FPS)，绝不阻塞 200Hz 触控采样与光标流！
+      static uint32_t lastMouseRenderTime = 0;
+      if (now - lastMouseRenderTime >= 33) {
+        lastMouseRenderTime = now;
+        renderScreen();
+      }
       return;
     }
 
@@ -1736,6 +1768,7 @@ void loop() {
         int ddy = abs(state.mouseLastY - state.mouseTouchStartY);
         if (ddx < 10 && ddy < 10 && state.mouseTouchStartY < 190 && state.mouseTouchStartX < 268) {
           if (BleCombo.isConnected()) BleCombo.mouseClick(MOUSE_LEFT);
+          Serial.println("CMD:mouse_left");
         }
       }
       state.mouseLastX = -1;

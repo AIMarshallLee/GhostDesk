@@ -517,6 +517,41 @@ def run_walkie_talkie_daemon():
                                     time.sleep(0.04)
                                     ctypes.windll.user32.keybd_event(VK_D, 0, KEYEVENTF_KEYUP, 0)
                                     ctypes.windll.user32.keybd_event(VK_LWIN, 0, KEYEVENTF_KEYUP, 0)
+                    elif line.startswith("MOUSE:"):
+                        # MOUSE:dx,dy,wheel
+                        parts = line[6:].split(',')
+                        if len(parts) >= 2:
+                            try:
+                                dx = int(parts[0])
+                                dy = int(parts[1])
+                                wheel = int(parts[2]) if len(parts) >= 3 else 0
+                                if sys.platform == "win32":
+                                    import ctypes
+                                    user32 = ctypes.windll.user32
+                                    if dx != 0 or dy != 0:
+                                        user32.mouse_event(0x0001, dx, dy, 0, 0)
+                                    if wheel != 0:
+                                        user32.mouse_event(0x0800, 0, 0, wheel * 120, 0)
+                            except Exception:
+                                pass
+                        continue
+
+                    elif line == "CMD:mouse_left":
+                        if sys.platform == "win32":
+                            import ctypes
+                            user32 = ctypes.windll.user32
+                            user32.mouse_event(0x0002, 0, 0, 0, 0) # LEFTDOWN
+                            time.sleep(0.015)
+                            user32.mouse_event(0x0004, 0, 0, 0, 0) # LEFTUP
+                        continue
+
+                    elif line == "CMD:mouse_right":
+                        if sys.platform == "win32":
+                            import ctypes
+                            user32 = ctypes.windll.user32
+                            user32.mouse_event(0x0008, 0, 0, 0, 0) # RIGHTDOWN
+                            time.sleep(0.015)
+                            user32.mouse_event(0x0010, 0, 0, 0, 0) # RIGHTUP
                         continue
 
                     elif line == "CMD:switch_window":

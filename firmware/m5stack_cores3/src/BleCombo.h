@@ -202,7 +202,7 @@ public:
     pSecurity->setInitEncryptionKey(ESP_BLE_ENC_KEY_MASK | ESP_BLE_ID_KEY_MASK);
 
     BLEAdvertising *pAdvertising = pServer->getAdvertising();
-    pAdvertising->setAppearance(HID_KEYBOARD);
+    pAdvertising->setAppearance(0x03C0); // HID Composite (Keyboard + Mouse)
     pAdvertising->addServiceUUID(pHid->hidService()->getUUID());
     pAdvertising->setScanResponse(false);
     pAdvertising->setMinPreferred(0x06);

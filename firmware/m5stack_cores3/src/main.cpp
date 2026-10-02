@@ -100,6 +100,7 @@ struct SystemState {
   uint32_t btnScSwitchHighlight = 0;
   uint32_t lastUserActionTime = 0;      // 最后一次用户触控操作时间
   bool isDimmed = false;                // 是否处于低功耗微暗屏状态
+  bool isScreenOff = false;             // 是否处于彻底熄屏休眠状态
   bool isSelectingDevice = false;       // 是否正在显示「4台设备选择菜单」弹窗
   int brightness = 190;
   volatile int liveVoiceLevel = 0; // 实时声学反馈 0~40
@@ -426,15 +427,15 @@ void drawSystemShortcutsView(uint32_t now) {
   bool scDeskPressed   = (now < state.btnScDeskHighlight);
   bool scSwitchPressed = (now < state.btnScSwitchHighlight);
 
-  // 卡片 1: 截图 (X: 12, Y: 56, W: 142, H: 82)
+  // 卡片 1: 微信截图 (X: 12, Y: 56, W: 142, H: 82)
   canvas.fillRoundRect(12, 56, 142, 82, 12, scShotPressed ? 0x2965 : 0x18C3);
   canvas.drawRoundRect(12, 56, 142, 82, 12, scShotPressed ? 0x9CDF : 0x3186);
   canvas.setTextColor(scShotPressed ? TFT_WHITE : 0x07FF);
-  canvas.setTextSize(2);
-  canvas.drawString("截图", 26, 72);
+  canvas.setTextSize(1);
+  canvas.drawString("微信截图", 26, 74);
   canvas.setTextColor(0x9CD3);
   canvas.setTextSize(1);
-  canvas.drawString("区域截屏", 26, 106);
+  canvas.drawString("Ctrl + J", 26, 104);
 
   // 卡片 2: 锁屏 (X: 166, Y: 56, W: 142, H: 82)
   canvas.fillRoundRect(166, 56, 142, 82, 12, scLockPressed ? 0x3980 : 0x18C3);
@@ -444,17 +445,17 @@ void drawSystemShortcutsView(uint32_t now) {
   canvas.drawString("锁屏", 180, 72);
   canvas.setTextColor(0x9CD3);
   canvas.setTextSize(1);
-  canvas.drawString("快速锁屏保密", 180, 106);
+  canvas.drawString("快速锁屏保密", 180, 104);
 
-  // 卡片 3: 桌面 (X: 12, Y: 146, W: 142, H: 82)
+  // 卡片 3: 显示桌面 (X: 12, Y: 146, W: 142, H: 82)
   canvas.fillRoundRect(12, 146, 142, 82, 12, scDeskPressed ? 0x0320 : 0x18C3);
   canvas.drawRoundRect(12, 146, 142, 82, 12, scDeskPressed ? 0x07E0 : 0x3186);
   canvas.setTextColor(scDeskPressed ? TFT_WHITE : 0x07E0);
-  canvas.setTextSize(2);
-  canvas.drawString("桌面", 26, 162);
+  canvas.setTextSize(1);
+  canvas.drawString("显示桌面", 26, 164);
   canvas.setTextColor(0x9CD3);
   canvas.setTextSize(1);
-  canvas.drawString("显示纯净桌面", 26, 196);
+  canvas.drawString("一键显隐桌面", 26, 194);
 
   // 卡片 4: 切窗口 (X: 166, Y: 146, W: 142, H: 82)
   canvas.fillRoundRect(166, 146, 142, 82, 12, scSwitchPressed ? 0x39C0 : 0x18C3);
@@ -464,7 +465,7 @@ void drawSystemShortcutsView(uint32_t now) {
   canvas.drawString("切窗口", 180, 162);
   canvas.setTextColor(0x9CD3);
   canvas.setTextSize(1);
-  canvas.drawString("Alt+Tab 轮换", 180, 196);
+  canvas.drawString("轮换应用窗口", 180, 194);
 }
 
 // ==========================================
@@ -1010,7 +1011,30 @@ void loop() {
   static uint32_t lastPageTabClick = 0;
   static uint32_t lastControlTabClick = 0;
 
+  // 实体侧边电源键单击：一键息屏黑屏休眠 / 极速点亮
+  if (M5.BtnPWR.wasClicked()) {
+    if (!state.isScreenOff) {
+      state.isScreenOff = true;
+      M5.Display.setBrightness(0);
+      M5.Display.sleep();
+    } else {
+      state.isScreenOff = false;
+      M5.Display.wakeup();
+      M5.Display.setBrightness(state.brightness);
+      renderScreen();
+    }
+  }
+
   if (isTouching) {
+    if (state.isScreenOff) {
+      // 触碰熄灭屏幕 -> 瞬间点亮唤醒屏幕！
+      state.isScreenOff = false;
+      M5.Display.wakeup();
+      M5.Display.setBrightness(state.brightness);
+      renderScreen();
+      return; // 拦截本次触碰，防止误触发功能
+    }
+
     state.lastUserActionTime = now;
     if (state.isDimmed) {
       state.isDimmed = false;
@@ -1238,20 +1262,20 @@ void loop() {
       } else if (currentMode == MODE_SYSTEM_SHORTCUTS) {
         // ── Tab 3 形态 B: 系统快捷台 (Stream Deck 4大卡片) ──
         if (tx < 160 && ty < 140) {
-          // 卡片 1: 截图
+          // 卡片 1: 微信截图 (Ctrl + J)
           state.btnScShotHighlight = now + 250;
           if (BleCombo.isConnected()) {
             if (isMacDevice(currentDevice)) {
-              BleCombo.pressKey(KEY_BLE_GUI | KEY_BLE_SHIFT, 0x21); // Cmd+Shift+4
+              BleCombo.pressKey(KEY_BLE_GUI | KEY_BLE_SHIFT, 0x21); // Mac: Cmd+Shift+4
             } else {
-              BleCombo.pressKey(KEY_BLE_GUI | KEY_BLE_SHIFT, 0x16); // Win+Shift+S
+              BleCombo.pressKey(KEY_BLE_CTRL, 0x0D); // Windows: Ctrl + J (微信默认截图快捷键)
             }
             BleCombo.releaseAllKeys();
           }
           Serial.println("CMD:screenshot");
-          showToast("已呼出系统截图", 1200);
+          showToast("已呼出微信截图 (Ctrl+J)", 1200);
         } else if (tx >= 160 && ty < 140) {
-          // 卡片 2: 锁屏
+          // 卡片 2: 锁屏 (Win+L / Cmd+Ctrl+Q)
           state.btnScLockHighlight = now + 250;
           if (BleCombo.isConnected()) {
             if (isMacDevice(currentDevice)) {
@@ -1264,7 +1288,7 @@ void loop() {
           Serial.println("CMD:lock");
           showToast("已执行电脑锁屏", 1200);
         } else if (tx < 160 && ty >= 140) {
-          // 卡片 3: 桌面
+          // 卡片 3: 显示桌面 (Win+D / F11 / Shell API)
           state.btnScDeskHighlight = now + 250;
           if (BleCombo.isConnected()) {
             if (isMacDevice(currentDevice)) {
@@ -1275,20 +1299,20 @@ void loop() {
             BleCombo.releaseAllKeys();
           }
           Serial.println("CMD:desktop");
-          showToast("显示纯净桌面", 1200);
+          showToast("一键显隐桌面", 1200);
         } else {
-          // 卡片 4: 切窗口
+          // 卡片 4: 切窗口 (Alt+Esc / Cmd+Tab / Next Window)
           state.btnScSwitchHighlight = now + 250;
           if (BleCombo.isConnected()) {
             if (isMacDevice(currentDevice)) {
               BleCombo.pressKey(KEY_BLE_GUI, HID_KEY_TAB); // Cmd+Tab
             } else {
-              BleCombo.pressKey(KEY_BLE_ALT, HID_KEY_TAB); // Alt+Tab
+              BleCombo.pressKey(KEY_BLE_ALT, HID_KEY_ESCAPE); // Alt+Esc (瞬间置换下一活动窗口)
             }
             BleCombo.releaseAllKeys();
           }
           Serial.println("CMD:switch_window");
-          showToast("切换窗口 Alt+Tab", 1200);
+          showToast("轮换应用窗口", 1200);
         }
         renderScreen();
         return;

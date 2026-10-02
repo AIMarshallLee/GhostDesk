@@ -474,55 +474,65 @@ def run_walkie_talkie_daemon():
                         continue
 
                     elif line == "CMD:screenshot":
-                        print("\n✂️ [CoreS3 快捷台] 一键截图")
+                        print("\n✂️ [CoreS3 快捷台] 触发微信截图 (Ctrl + J)...")
                         if sys.platform == "win32":
                             import ctypes
-                            VK_LWIN = 0x5B
-                            VK_SHIFT = 0x10
-                            VK_S = 0x53
+                            VK_CONTROL = 0x11
+                            VK_J = 0x4A
                             KEYEVENTF_KEYUP = 0x0002
-                            ctypes.windll.user32.keybd_event(VK_LWIN, 0, 0, 0)
-                            ctypes.windll.user32.keybd_event(VK_SHIFT, 0, 0, 0)
-                            ctypes.windll.user32.keybd_event(VK_S, 0, 0, 0)
+                            ctypes.windll.user32.keybd_event(VK_CONTROL, 0, 0, 0)
+                            ctypes.windll.user32.keybd_event(VK_J, 0, 0, 0)
                             time.sleep(0.04)
-                            ctypes.windll.user32.keybd_event(VK_S, 0, KEYEVENTF_KEYUP, 0)
-                            ctypes.windll.user32.keybd_event(VK_SHIFT, 0, KEYEVENTF_KEYUP, 0)
-                            ctypes.windll.user32.keybd_event(VK_LWIN, 0, KEYEVENTF_KEYUP, 0)
+                            ctypes.windll.user32.keybd_event(VK_J, 0, KEYEVENTF_KEYUP, 0)
+                            ctypes.windll.user32.keybd_event(VK_CONTROL, 0, KEYEVENTF_KEYUP, 0)
                         continue
 
                     elif line == "CMD:lock":
-                        print("\n🔒 [CoreS3 快捷台] 一键锁屏")
+                        print("\n🔒 [CoreS3 快捷台] 一键锁屏 LockWorkStation")
                         if sys.platform == "win32":
                             import ctypes
                             ctypes.windll.user32.LockWorkStation()
                         continue
 
                     elif line == "CMD:desktop":
-                        print("\n🖥️ [CoreS3 快捷台] 显示桌面 Win+D")
+                        print("\n🖥️ [CoreS3 快捷台] 一键显示/恢复桌面...")
                         if sys.platform == "win32":
                             import ctypes
-                            VK_LWIN = 0x5B
-                            VK_D = 0x44
-                            KEYEVENTF_KEYUP = 0x0002
-                            ctypes.windll.user32.keybd_event(VK_LWIN, 0, 0, 0)
-                            ctypes.windll.user32.keybd_event(VK_D, 0, 0, 0)
-                            time.sleep(0.04)
-                            ctypes.windll.user32.keybd_event(VK_D, 0, KEYEVENTF_KEYUP, 0)
-                            ctypes.windll.user32.keybd_event(VK_LWIN, 0, KEYEVENTF_KEYUP, 0)
+                            # 方法 1: 发送任务栏消息 407 (Windows 原生 Toggle Desktop)
+                            tray_hwnd = ctypes.windll.user32.FindWindowW("Shell_TrayWnd", None)
+                            if tray_hwnd:
+                                ctypes.windll.user32.PostMessageW(tray_hwnd, 0x0111, 407, 0)
+                            else:
+                                # 方法 2: COM 接口 ToggleDesktop
+                                try:
+                                    import win32com.client
+                                    win32com.client.Dispatch("Shell.Application").ToggleDesktop()
+                                except Exception:
+                                    # 兜底 Win + D
+                                    VK_LWIN = 0x5B
+                                    VK_D = 0x44
+                                    KEYEVENTF_KEYUP = 0x0002
+                                    ctypes.windll.user32.keybd_event(VK_LWIN, 0, 0, 0)
+                                    ctypes.windll.user32.keybd_event(VK_D, 0, 0, 0)
+                                    time.sleep(0.04)
+                                    ctypes.windll.user32.keybd_event(VK_D, 0, KEYEVENTF_KEYUP, 0)
+                                    ctypes.windll.user32.keybd_event(VK_LWIN, 0, KEYEVENTF_KEYUP, 0)
                         continue
 
                     elif line == "CMD:switch_window":
-                        print("\n🔀 [CoreS3 快捷台] 切换窗口 Alt+Tab")
+                        print("\n🔀 [CoreS3 快捷台] 切换窗口 (Alt + Esc / Next Window)...")
                         if sys.platform == "win32":
                             import ctypes
+                            user32 = ctypes.windll.user32
+                            # 1. 发送 Alt + Esc 瞬间切到下一个活动程序
                             VK_MENU = 0x12
-                            VK_TAB = 0x09
+                            VK_ESCAPE = 0x1B
                             KEYEVENTF_KEYUP = 0x0002
-                            ctypes.windll.user32.keybd_event(VK_MENU, 0, 0, 0)
-                            ctypes.windll.user32.keybd_event(VK_TAB, 0, 0, 0)
-                            time.sleep(0.04)
-                            ctypes.windll.user32.keybd_event(VK_TAB, 0, KEYEVENTF_KEYUP, 0)
-                            ctypes.windll.user32.keybd_event(VK_MENU, 0, KEYEVENTF_KEYUP, 0)
+                            user32.keybd_event(VK_MENU, 0, 0, 0)
+                            user32.keybd_event(VK_ESCAPE, 0, 0, 0)
+                            time.sleep(0.03)
+                            user32.keybd_event(VK_ESCAPE, 0, KEYEVENTF_KEYUP, 0)
+                            user32.keybd_event(VK_MENU, 0, KEYEVENTF_KEYUP, 0)
                         continue
 
                     elif line == "VOICE_START":

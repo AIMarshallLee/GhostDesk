@@ -1,12 +1,21 @@
 #include <Arduino.h>
 #include <M5Unified.h>
+#include <Preferences.h>
+#include <esp_mac.h>
 #include "BleCombo.h"
 
 // 协议与固件常量
 #define PROTOCOL_VERSION 4
-#define FIRMWARE_VERSION "1.2.1"
-#define DEVICE_NAME "FlowDesk Remote"
+#define FIRMWARE_VERSION "1.3.0"
 #define BOARD_NAME "m5stack-cores3"
+
+// 3 台多设备切换枚举
+enum BleDeviceChannel {
+  DEVICE_WIN1 = 0, // Win 1 (Windows 主机)
+  DEVICE_WIN2 = 1, // Win 2 (Windows 备机)
+  DEVICE_MAC  = 2  // Mac (Mac Mini)
+};
+uint8_t currentDevice = 0;
 
 // PSRAM 双缓冲画布 (320x240，零闪烁高帧率)
 static M5Canvas canvas(&M5.Display);
@@ -90,6 +99,22 @@ void setEmotion(BuddyEmotion emo, const String& msg, uint32_t durationMs = 3000)
   state.emotion = emo;
   state.statusMsg = msg;
   state.emotionUntil = (durationMs > 0) ? millis() + durationMs : 0;
+}
+
+void renderScreen();
+
+void switchDeviceChannel(uint8_t targetDevice) {
+  targetDevice = targetDevice % 3;
+  Preferences p;
+  p.begin("flowdesk", false);
+  p.putUChar("device", targetDevice);
+  p.end();
+
+  const char* targetNames[] = {"Win 1 (Windows主机)", "Win 2 (Windows备机)", "Mac Mini"};
+  showToast(String("3台设备切换: ") + targetNames[targetDevice], 2500);
+  renderScreen();
+  delay(500);
+  esp_restart();
 }
 
 // ==========================================
@@ -283,6 +308,8 @@ void drawAppleCutePet(int cx, int cy, BuddyEmotion emotion, int blink) {
 // 顶栏：满屏超大三大选项卡 Tab [🎙️ 云端] [⌨️ 遥控] [📑 翻页] + 苹果风竖直微电量柱
 // ==========================================
 void drawDynamicIsland() {
+  const char* devLabels[] = {"Win1", "Win2", "Mac"};
+
   // Tab 1: 云端语音 (X: 4 ~ 98, 宽 94, 高 40)
   if (currentMode == MODE_CORES3_MIC) {
     canvas.fillRoundRect(4, 5, 94, 40, 8, 0x0317);
@@ -294,7 +321,8 @@ void drawDynamicIsland() {
     canvas.setTextColor(0x7BEF);
   }
   canvas.setTextSize(1);
-  canvas.drawCenterString("云端", 51, 18);
+  canvas.drawCenterString("云端", 51, 10);
+  canvas.drawCenterString("USB", 51, 26);
 
   // Tab 2: 电脑遥控 (X: 102 ~ 196, 宽 94, 高 40)
   if (currentMode == MODE_BLE_REMOTE) {
@@ -307,7 +335,8 @@ void drawDynamicIsland() {
     canvas.setTextColor(0x7BEF);
   }
   canvas.setTextSize(1);
-  canvas.drawCenterString("遥控", 149, 18);
+  canvas.drawCenterString("遥控", 149, 10);
+  canvas.drawCenterString(devLabels[currentDevice], 149, 26);
 
   // Tab 3: 翻页演讲 (X: 200 ~ 296, 宽 96, 高 40)
   if (currentMode == MODE_PAGE_FLIP) {
@@ -320,7 +349,8 @@ void drawDynamicIsland() {
     canvas.setTextColor(0x7BEF);
   }
   canvas.setTextSize(1);
-  canvas.drawCenterString("翻页", 248, 18);
+  canvas.drawCenterString("翻页", 248, 10);
+  canvas.drawCenterString(devLabels[currentDevice], 248, 26);
 
   // 右侧边缘：苹果风竖直微电量柱 (X: 305 ~ 316, 宽 11, 高 38)
   int bat = state.cachedBattery;
@@ -697,13 +727,31 @@ void setup() {
     0
   );
 
-  // 原生免驱 BLE 蓝牙 HID 键盘初始化 (广播名: FlowDesk Remote)
-  BleCombo.begin("FlowDesk Remote");
+  // 读取存储的设备通道 (0: Win1, 1: Win2, 2: Mac)
+  Preferences p;
+  p.begin("flowdesk", false);
+  currentDevice = p.getUChar("device", 0);
+  p.end();
+  if (currentDevice > 2) currentDevice = 0;
+
+  // 为 3 台设备配置独立的物理蓝牙 MAC 地址，彻底杜绝串台与设备抢占
+  uint8_t baseMac[6];
+  if (esp_read_mac(baseMac, ESP_MAC_BT) == ESP_OK) {
+    baseMac[5] = (baseMac[5] & 0xFC) | currentDevice;
+    esp_base_mac_addr_set(baseMac);
+  }
+
+  // 原生免驱 BLE 蓝牙 HID 键盘初始化 (按照当前通道独立广播设备名)
+  const char* bleNames[] = {"FlowDesk Win1", "FlowDesk Win2", "FlowDesk Mac"};
+  BleCombo.begin(bleNames[currentDevice]);
 
   nextBlinkTime = millis() + 2000;
   nextLookTime = millis() + 3500;
   state.lastUserActionTime = millis();
   state.cachedBattery = M5.Power.getBatteryLevel();
+
+  const char* devGreeting[] = {"已就绪: Win 1 (Windows主机)", "已就绪: Win 2 (Windows备机)", "已就绪: Mac Mini"};
+  showToast(devGreeting[currentDevice], 1800);
   renderScreen();
 }
 
@@ -717,6 +765,8 @@ void loop() {
   static bool touchLatched = false; // 严格单次按下锁
   static uint32_t tab2PressStart = 0;
   static bool tab2LongTriggered = false;
+  static uint32_t tab3PressStart = 0;
+  static bool tab3LongTriggered = false;
 
   if (isTouching) {
     state.lastUserActionTime = now;
@@ -736,18 +786,32 @@ void loop() {
     if (tx <= 0) tx = 160; // 兜底中心点
     if (ty <= 0) ty = 110;
 
-    // 长按顶栏「遥控」Tab 1.5 秒触发重新广播配对，方便直接流转到第二台 Windows 电脑
+    // 1. 长按顶栏「遥控」Tab 1.5 秒：触发当前设备通道重新广播配对
     if (ty <= 54 && tx >= 100 && tx < 198) {
       if (tab2PressStart == 0) tab2PressStart = now;
       if (!tab2LongTriggered && (now - tab2PressStart >= 1500)) {
         tab2LongTriggered = true;
         BleCombo.startAdvertising();
-        showToast("已开启蓝牙配对广播", 2000);
+        showToast("已开启当前设备蓝牙配对", 2000);
         renderScreen();
       }
     } else {
       tab2PressStart = 0;
       tab2LongTriggered = false;
+    }
+
+    // 2. 长按顶栏「翻页」Tab 1.5 秒：3 台设备快速循环切换 (Win 1 -> Win 2 -> Mac)
+    if (ty <= 54 && tx >= 198) {
+      if (tab3PressStart == 0) tab3PressStart = now;
+      if (!tab3LongTriggered && (now - tab3PressStart >= 1500)) {
+        tab3LongTriggered = true;
+        uint8_t nextDev = (currentDevice + 1) % 3;
+        switchDeviceChannel(nextDev);
+        return;
+      }
+    } else {
+      tab3PressStart = 0;
+      tab3LongTriggered = false;
     }
 
     if (!touchLatched) {
@@ -842,18 +906,25 @@ void loop() {
           state.pendingReturnTime = 0; // 彻底取消自动回车
 
           if (BleCombo.isConnected()) {
-            if (wasActive) {
-              // 1. 退出微信输入法听音状态
-              BleCombo.pressRightAlt();
-              BleCombo.releaseRightAlt();
+            if (currentDevice == DEVICE_MAC) {
+              // ── Mac Mini 模式: 原生 macOS 撤销 (Escape + Cmd+Z) ──
+              BleCombo.pressKey(0, HID_KEY_ESCAPE);
+              BleCombo.releaseAllKeys();
+              delay(15);
+              BleCombo.pressKey(KEY_BLE_GUI, 0x1D); // Cmd + Z
+              BleCombo.releaseAllKeys();
+            } else {
+              // ── Windows 模式: 微信输入法撤销 (Right Alt + Escape + Ctrl+Z) ──
+              if (wasActive) {
+                BleCombo.pressRightAlt();
+                BleCombo.releaseRightAlt();
+              }
+              BleCombo.pressKey(0, HID_KEY_ESCAPE);
+              BleCombo.releaseAllKeys();
+              delay(15);
+              BleCombo.pressKey(KEY_BLE_CTRL, 0x1D); // Ctrl + Z
+              BleCombo.releaseAllKeys();
             }
-            // 2. 发送 Escape 关闭语音悬浮窗 / 候选词
-            BleCombo.pressKey(0, HID_KEY_ESCAPE);
-            BleCombo.releaseAllKeys();
-
-            // 3. 发送 Ctrl + Z 撤销刚打上屏的整段文字 (HID 'z' 为 0x1D)
-            BleCombo.pressKey(KEY_BLE_CTRL, 0x1D);
-            BleCombo.releaseAllKeys();
           }
           if (wasActive) Serial.println("CMD:right_alt");
           Serial.println("CMD:escape");
@@ -916,6 +987,8 @@ void loop() {
     touchLatched = false;
     tab2PressStart = 0;
     tab2LongTriggered = false;
+    tab3PressStart = 0;
+    tab3LongTriggered = false;
   }
 
   // 1.5 非阻塞延时自动提交 (时间一到敲击回车，零卡顿，100% 成功发送)

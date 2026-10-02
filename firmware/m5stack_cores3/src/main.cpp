@@ -58,11 +58,11 @@ enum DeviceMode {
   MODE_SYSTEM_SHORTCUTS = 4,  // Tab 3 子模式: 系统快捷台 (截图、锁屏、桌面、切窗口)
   MODE_TOUCH_MOUSE      = 5   // 触控鼠标 (高精度苹果触控板，指哪打哪)
 };
-DeviceMode currentMode = MODE_CORES3_MIC;
+DeviceMode currentMode = MODE_BLE_REMOTE;
 
-// 记忆用户当前选定的语音与控制子模式 (确保切换到翻页等页面时，顶栏状态完全真实对应，绝不错显)
-DeviceMode activeVoiceMode   = MODE_CORES3_MIC;
-DeviceMode activeControlMode = MODE_MEDIA_CONTROL;
+// 记忆用户当前选定的语音与控制子模式 (默认“电脑遥控”极速模式，无需云端转写等待)
+DeviceMode activeVoiceMode   = MODE_BLE_REMOTE;
+DeviceMode activeControlMode = MODE_SYSTEM_SHORTCUTS;
 
 // 运行状态
 enum BuddyEmotion {
@@ -1113,12 +1113,17 @@ void setup() {
     0
   );
 
-  // 读取存储的设备通道 (0: Win 1, 1: Win 2, 2: Mac 1, 3: Mac 2)
+  // 读取存储的设备通道与模式 (默认 0 号设备与电脑遥控模式)
   Preferences p;
   p.begin("flowdesk", false);
   currentDevice = p.getUChar("device", 0);
+  activeVoiceMode = (DeviceMode)p.getUChar("voice_mode", (uint8_t)MODE_BLE_REMOTE);
   p.end();
   if (currentDevice >= TOTAL_DEVICES) currentDevice = 0;
+  if (activeVoiceMode != MODE_CORES3_MIC && activeVoiceMode != MODE_BLE_REMOTE) {
+    activeVoiceMode = MODE_BLE_REMOTE;
+  }
+  currentMode = activeVoiceMode;
 
   // 为 4 台设备配置独立的物理蓝牙 MAC 地址，彻底杜绝串台与设备抢占
   uint8_t baseMac[6];
@@ -1354,6 +1359,10 @@ void loop() {
                 activeVoiceMode = MODE_CORES3_MIC;
                 showToast("已切换: 云端语音", 1500);
               }
+              Preferences p;
+              p.begin("flowdesk", false);
+              p.putUChar("voice_mode", (uint8_t)activeVoiceMode);
+              p.end();
               lastVoiceTabClick = 0;
             } else {
               lastVoiceTabClick = now;

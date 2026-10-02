@@ -84,6 +84,7 @@ struct SystemState {
   uint32_t pendingReturnTime = 0;    // 延时回车计时器 (豆包 AI 整理转写专用延时)
   uint8_t sentNoticeState = 0;       // 0=无, 1=成功(绿), 2=失败(红)
   uint32_t sentNoticeUntil = 0;      // 提示框显示倒计时
+  uint32_t pendingCancelClearTime = 0; // 延时全选清空计时器 (确保语音流完全落盘后清空)
   uint32_t cmdEnterSentTime = 0;     // 发送指令时间戳
   uint32_t btnCancelHighlightUntil = 0; // 取消按钮瞬时高亮时间戳
   uint32_t btnSendHighlightUntil = 0;   // 发送按钮瞬时高亮时间戳
@@ -1148,9 +1149,10 @@ void loop() {
   M5.update();
   uint32_t now = millis();
 
-  // 1. 极致顺滑、100% 灵敏的触控捕获 (支持瞬时短点与按下，彻底防止漏检)
+  // 1. 极致顺滑、100% 灵敏的触控捕获 (结合硬件原生计数器与 Detail 状态，彻底杜绝丢步)
   auto touch = M5.Touch.getDetail();
-  bool isTouching = touch.isPressed() || touch.wasPressed() || touch.wasClicked();
+  uint8_t touchCount = M5.Touch.getCount();
+  bool isTouching = (touchCount > 0) || touch.isPressed() || touch.wasPressed() || touch.wasClicked();
   static bool touchLatched = false; // 严格单次按下锁
   static uint32_t tab2PressStart = 0;
   static bool tab2LongTriggered = false;
@@ -1189,15 +1191,18 @@ void loop() {
       renderScreen();
     }
 
-    // 实时采样精准坐标 (优先当前触点，备选 base_x/prev_x)
+    // 实时采样精准坐标 (优先直接从硬件读取原始点，完全绕过滑动死区阈值)
     int tx = touch.x;
     int ty = touch.y;
-    if (tx <= 0 && touch.base_x > 0) tx = touch.base_x;
-    if (ty <= 0 && touch.base_y > 0) ty = touch.base_y;
-    if (tx <= 0 && touch.prev_x > 0) tx = touch.prev_x;
-    if (ty <= 0 && touch.prev_y > 0) ty = touch.prev_y;
-    if (tx <= 0) tx = 160; // 兜底中心点
-    if (ty <= 0) ty = 110;
+    if (touchCount > 0) {
+      auto rawTp = M5.Touch.getTouchPointRaw(0);
+      if (rawTp.x >= 0 && rawTp.y >= 0) {
+        tx = rawTp.x;
+        ty = rawTp.y;
+      }
+    }
+    if (tx < 0) tx = 160;
+    if (ty < 0) ty = 110;
 
     // ── 情况 1: 如果当前正处于「设备选择菜单」弹窗中 ──
     if (state.isSelectingDevice) {
@@ -1652,6 +1657,7 @@ void loop() {
       } else {
         // ── Tab 1 子模式: 电脑遥控模式 ──
         // 1. 左下大区域【取消】判定区 (ty >= 185 && tx < 100)
+        // 1. 左下大区域【取消】判定区 (ty >= 185 && tx < 100)
         if (ty >= 185 && tx < 100) {
           state.btnCancelHighlightUntil = now + 250; // 点亮按键高亮变色 250ms
           state.sentNoticeUntil = 0; // 彻底清除任何状态，绝无任何错位绿框！
@@ -1660,36 +1666,21 @@ void loop() {
           state.isBleVoiceActive = false;
           state.pendingReturnTime = 0; // 彻底取消自动回车
 
+          // 立即关闭输入法语音录音
           if (BleCombo.isConnected()) {
-            if (isMacDevice(currentDevice)) {
-              BleCombo.pressKey(0, HID_KEY_ESCAPE);
-              BleCombo.releaseAllKeys();
-              delay(20);
-              BleCombo.pressKey(KEY_BLE_GUI, 0x04); // Cmd+A 全选
-              BleCombo.releaseAllKeys();
-              delay(30);
-              BleCombo.pressKey(0, HID_KEY_BACKSPACE); // Backspace 清空
-              BleCombo.releaseAllKeys();
-            } else {
-              if (wasActive) {
-                BleCombo.pressRightAlt();
-                BleCombo.releaseRightAlt();
-                delay(40);
-              }
-              BleCombo.pressKey(0, HID_KEY_ESCAPE);
-              BleCombo.releaseAllKeys();
-              delay(20);
-              BleCombo.pressKey(KEY_BLE_CTRL, 0x04); // Ctrl+A 全选
-              BleCombo.releaseAllKeys();
-              delay(30);
-              BleCombo.pressKey(0, HID_KEY_BACKSPACE); // Backspace 清空
-              BleCombo.releaseAllKeys();
+            if (wasActive && !isMacDevice(currentDevice)) {
+              BleCombo.pressRightAlt();
+              BleCombo.releaseRightAlt();
             }
+            BleCombo.pressKey(0, HID_KEY_ESCAPE);
+            BleCombo.releaseAllKeys();
           }
           if (wasActive) Serial.println("CMD:right_alt");
           Serial.println("CMD:escape");
-          Serial.println("CMD:clear_input");
-          setEmotion(EMOTION_IDLE, "已清空取消", 1000);
+
+          // 核心优化：延时 400ms 再执行全选清空，留出输入法语音识别文字完全落盘/打到窗口的时间！
+          state.pendingCancelClearTime = now + 400;
+          setEmotion(EMOTION_IDLE, "正在清空...", 800);
           renderScreen();
           return;
         }
@@ -1698,6 +1689,7 @@ void loop() {
         if (ty >= 185 && tx >= 100 && tx < 192) {
           state.btnMouseHighlight = now + 250;
           currentMode = MODE_TOUCH_MOUSE;
+          Serial.println("MODE:TOUCH_MOUSE");
           showToast("高精度触控板", 1000);
           renderScreen();
           return;
@@ -1788,6 +1780,22 @@ void loop() {
     }
     Serial.println("CMD:enter");
     state.cmdEnterSentTime = now;
+    renderScreen();
+  }
+
+  // 1.6 延时全选清空输入框 (等待输入法语音彻底落盘上屏后，精准一键全选删除，绝不留残字)
+  if (state.pendingCancelClearTime > 0 && now >= state.pendingCancelClearTime) {
+    state.pendingCancelClearTime = 0;
+    if (BleCombo.isConnected()) {
+      uint8_t mod = isMacDevice(currentDevice) ? KEY_BLE_GUI : KEY_BLE_CTRL;
+      BleCombo.pressKey(mod, 0x04); // Ctrl+A / Cmd+A 全选
+      BleCombo.releaseAllKeys();
+      delay(35);
+      BleCombo.pressKey(0, HID_KEY_BACKSPACE); // Backspace 清空
+      BleCombo.releaseAllKeys();
+    }
+    Serial.println("CMD:clear_input");
+    setEmotion(EMOTION_IDLE, "已全选清空", 1000);
     renderScreen();
   }
 

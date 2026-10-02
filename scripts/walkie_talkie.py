@@ -534,6 +534,8 @@ def run_walkie_talkie_daemon():
                                         user32.mouse_event(0x0800, 0, 0, wheel * 120, 0)
                             except Exception:
                                 pass
+                    elif line == "MODE:TOUCH_MOUSE":
+                        print("\n🖱️ [CoreS3 触控板] 进入触控鼠标模式 (双通道待命，指哪打哪)...")
                         continue
 
                     elif line == "CMD:mouse_left":

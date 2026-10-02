@@ -77,10 +77,45 @@
 1. 用 Chrome 打开本地文件：`firmware/m5stack_cores3/web_flasher.html`；
 2. 点击连接你的 CoreS3 串口，一键烧录！
 
-### 极速方式 B：Arduino IDE 2.x
-1. 安装 `M5Unified` 库；
-2. 打开 `firmware/m5stack_cores3/m5stack_cores3.ino`；
-3. 开发板选择 `M5Stack-CoreS3`，设置：
-   - **USB Mode**: `Hardware CDC and JTAG`
-   - **USB CDC On Boot**: `Enabled`
-4. 点击 Upload 烧录，拔插一次即大功告成！
+### 极速方式 B：一键全自动烧录脚本 (推荐)
+直接运行：
+```bash
+python firmware/m5stack_cores3/auto_flash.py
+```
+检测到 CoreS3 接入后将全自动烧录最新固件并重启！
+
+### 极速方式 C：PlatformIO / Arduino IDE
+- PlatformIO: `uvx platformio run -d firmware/m5stack_cores3`
+- Arduino IDE: 打开 `firmware/m5stack_cores3/m5stack_cores3.ino` 编译上传。
+
+---
+
+## 📋 功能验收与验证状态对照表
+
+### ✅ 已全面验证好用（Production Verified & Shipped）
+1. **对讲机级电脑遥控（BLE Remote + 语音无感上屏）**：
+   - 联动手机微信/搜狗/百度输入法语音，免手碰键盘，自动无感落盘打入当前活跃代码窗口。
+   - **智能自动回车**：松手后平滑延迟自动敲入 Enter。
+   - **两段式防残存扫尾**：智能拦截输入法残字，杜绝漏字残字。
+   - **【取消】按键严苛防误触（最新优化）**：仅在正在录音或倒计时时才触发清空；未录音空闲状态点击【取消】严禁触发全选删除（彻底杜绝屏幕全选变蓝、光标跳移）。
+2. **Tab 2 翻页与专属电梯滚轮（最新视觉与交互重构）**：
+   - **双大卡片极速翻页**：上一页（上箭头 ▲）与下一页（下箭头 ▼）全面升级为硬件级原生矢量图形绘制，彻底解决字体缺字导致的“方框”异常；箭头统一置顶，主文字与中英双标居中对齐，清晰美观。
+   - **全高专属垂直滚轮条**：右侧全高直达滑道；点按微调滑块自动跟随，长按电梯式连续自动滚屏，上下划动平滑翻滚；顶栏绝对防误触。
+3. **MacBook 级全手势触控板**：
+   - 单指移动、双指滚轮翻页、单指轻击左键、双击、双指轻击右键菜单、长按拖拽选中。
+   - USB 极速轮询与 BLE 低功耗蓝牙双通道并发。
+4. **三大 Tab 统一规范导航**：
+   - Tab 1 语音对讲、Tab 2 触控鼠标/翻页、Tab 3 多媒体与系统快捷工作台，自由丝滑切换。
+5. **Windows 开机静默后台自启**：
+   - 提供 `scripts/install_startup.py`、`scripts/uninstall_startup.py` 与 `scripts/stop_walkie_talkie.py`，无黑框弹窗静默驻留。
+
+---
+
+### ⚠️ 未验证实验性功能（Experimental / Not Enabled in CoreS3）
+1. **GC0308 视觉按需驱动原型（`firmware/m5stack_cores3/src/CoreS3Camera.h`）**：
+   - 核心设计：按需唤醒拍照，平时 100% 彻底断电休眠（0 功耗、0 CPU、0 总线占用）；
+   - 照片以十六进制分包流式发送给电脑端。
+2. **电脑端照片接收与视觉原型（`scripts/walkie_talkie.py`）**：
+   - 场景 1 拍照识字（OCR）与场景 2 扫码直填（QR Code）的解析原型。
+- **特别说明**：为了确保 CoreS3 作为对讲机、触控板与快捷键盘的极致流畅度与绝对稳定性，上述视觉模块**未接入出厂主交互界面，亦未烧录入当前硬件**，作为实验性源码归档至 GitHub，供后续阶段独立评估。
+

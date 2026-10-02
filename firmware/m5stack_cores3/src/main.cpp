@@ -913,28 +913,38 @@ void renderScreen() {
     uint16_t upBgColor     = isPageUpPressed ? 0x0270 : 0x18C3;
     uint16_t upBorderColor = isPageUpPressed ? 0x07FF : 0x3186;
     uint16_t upTextColor   = isPageUpPressed ? TFT_WHITE : 0x07FF;
+    uint16_t upSubColor    = isPageUpPressed ? TFT_WHITE : 0x05B5;
 
     uint16_t downBgColor     = isPageDownPressed ? 0x0320 : 0x18C3;
     uint16_t downBorderColor = isPageDownPressed ? 0x07E0 : 0x3186;
     uint16_t downTextColor   = isPageDownPressed ? TFT_WHITE : 0x07E0;
+    uint16_t downSubColor    = isPageDownPressed ? TFT_WHITE : 0x05A0;
 
     // 左半边：上一页 Page Up (X: 12 ~ 154, Y: 56 ~ 228)
     canvas.fillRoundRect(12, 56, 142, 172, 14, upBgColor);
     canvas.drawRoundRect(12, 56, 142, 172, 14, upBorderColor);
+    // 上部：矢量上箭头 (原生多边形绘制，绝不依赖字库，锐利饱满)
+    canvas.fillTriangle(83, 78, 83 - 18, 104, 83 + 18, 104, upTextColor);
+    // 中部：主文字放正中
     canvas.setTextColor(upTextColor);
-    canvas.setTextSize(2);
-    canvas.drawCenterString("▲", 83, 110);
     canvas.setTextSize(1);
-    canvas.drawCenterString("上一页", 83, 145);
+    canvas.drawCenterString("上一页", 83, 134);
+    // 下部：英文辅助副标
+    canvas.setTextColor(upSubColor);
+    canvas.drawCenterString("Page Up", 83, 164);
 
     // 右半边：下一页 Page Down (X: 166 ~ 308, Y: 56 ~ 228)
     canvas.fillRoundRect(166, 56, 142, 172, 14, downBgColor);
     canvas.drawRoundRect(166, 56, 142, 172, 14, downBorderColor);
+    // 上部：矢量下箭头 (位于卡片上方，箭头朝下，彻底根治字库缺失导致的方框问题)
+    canvas.fillTriangle(237 - 18, 78, 237 + 18, 78, 237, 104, downTextColor);
+    // 中部：主文字放正中
     canvas.setTextColor(downTextColor);
-    canvas.setTextSize(2);
-    canvas.drawCenterString("▼", 237, 110);
     canvas.setTextSize(1);
-    canvas.drawCenterString("下一页", 237, 145);
+    canvas.drawCenterString("下一页", 237, 134);
+    // 下部：英文辅助副标
+    canvas.setTextColor(downSubColor);
+    canvas.drawCenterString("Page Down", 237, 164);
   } else if (currentMode == MODE_MEDIA_CONTROL) {
     // ── Tab 3 形态 A: 多媒体播控中枢 ──
     drawMediaControlView(now);
@@ -1783,8 +1793,17 @@ void loop() {
           state.sentNoticeUntil = 0; // 彻底清除任何状态，绝无任何错位绿框！
           state.sentNoticeState = 0;
           bool wasActive = state.isBleVoiceActive;
+          bool wasPending = (state.pendingReturnTime > 0);
           state.isBleVoiceActive = false;
           state.pendingReturnTime = 0; // 彻底取消自动回车
+
+          // 核心防误触守护：若当前根本未在录音，也没有待回车倒计时，绝不触发全选清空！
+          // 彻底防止空闲误触时向电脑发送 Ctrl+A 导致全屏变蓝或光标跳移
+          if (!wasActive && !wasPending) {
+            setEmotion(EMOTION_IDLE, "未在录音", 600);
+            renderScreen();
+            return;
+          }
 
           // 立即关闭输入法语音录音
           if (BleCombo.isConnected()) {

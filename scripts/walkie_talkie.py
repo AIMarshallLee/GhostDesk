@@ -299,6 +299,64 @@ def handle_audio_async(raw_buffer: bytes, ser):
     threading.Thread(target=worker, daemon=True).start()
 
 
+# =====================================================================
+# 实验性协议扩展 (未验证 - Experimental / Unverified)
+# 对应 CoreS3Camera.h 视觉扩展协议原型 (支持单帧拍照识字与扫码直填)
+# 当前主线默认保持未激活，不影响任何核心遥控与对讲功能
+# =====================================================================
+_photo_buffer = bytearray()
+_photo_expected_len = 0
+_photo_mode = ""
+
+def handle_photo_start(mode: str, length: int):
+    global _photo_buffer, _photo_expected_len, _photo_mode
+    _photo_buffer = bytearray()
+    _photo_expected_len = length
+    _photo_mode = mode
+    print(f"\n📸 [CoreS3 视觉实验协议] 接收照片开始: 模式={mode}, 预期大小={length} 字节 (未验证特性)")
+
+def handle_photo_chunk(hex_str: str):
+    global _photo_buffer
+    try:
+        data = bytes.fromhex(hex_str.strip())
+        _photo_buffer.extend(data)
+    except Exception as e:
+        print(f"⚠️ [CoreS3 视觉] 照片数据包解析异常: {e}")
+
+def handle_photo_end():
+    global _photo_buffer, _photo_expected_len, _photo_mode
+    print(f"📸 [CoreS3 视觉实验协议] 照片接收完成: 实际接收 {len(_photo_buffer)}/{_photo_expected_len} 字节")
+    try:
+        import os
+        os.makedirs("debug_photos", exist_ok=True)
+        filename = f"debug_photos/capture_{int(time.time())}_{_photo_mode}.jpg"
+        with open(filename, "wb") as f:
+            f.write(_photo_buffer)
+        print(f"📸 [CoreS3 视觉] 照片已保存至: {filename}")
+
+        if _photo_mode == "qr":
+            try:
+                from PIL import Image
+                from pyzbar.pyzbar import decode
+                import io
+                img = Image.open(io.BytesIO(_photo_buffer))
+                decoded = decode(img)
+                if decoded:
+                    qr_text = decoded[0].data.decode('utf-8')
+                    print(f"🎯 [CoreS3 视觉] 扫码成功: {qr_text}")
+                    inject_prompt_to_active_window(qr_text, auto_enter=True)
+                else:
+                    print("⚠️ [CoreS3 视觉] 未在图片中检测到二维码")
+            except ImportError:
+                print("💡 [CoreS3 视觉] 扫码功能需安装可选依赖: pip install pillow pyzbar")
+            except Exception as e:
+                print(f"⚠️ [CoreS3 视觉] 扫码解码失败: {e}")
+        elif _photo_mode == "ocr":
+            print("💡 [CoreS3 视觉] 拍照识字原型已就绪，可连接本地 PaddleOCR 或云端多模态 API 进行文本提取")
+    except Exception as e:
+        print(f"⚠️ [CoreS3 视觉] 照片处理异常: {e}")
+
+
 def run_walkie_talkie_daemon():
     print("=" * 60)
     print("🎙️ GhostDesk M5Stack CoreS3 智能 AI 对讲机服务已就绪")
@@ -683,6 +741,24 @@ def run_walkie_talkie_daemon():
                             audio_buffer.extend(chunk)
                         except ValueError:
                             pass
+
+                    # 实验性协议：GC0308 视觉按需回传 (未验证原型)
+                    elif line.startswith("PHOTO_START:"):
+                        parts = line[12:].split(',')
+                        if len(parts) >= 2:
+                            try:
+                                handle_photo_start(parts[0], int(parts[1]))
+                            except Exception:
+                                pass
+                        continue
+
+                    elif line.startswith("P:"):
+                        handle_photo_chunk(line[2:])
+                        continue
+
+                    elif line == "PHOTO_END":
+                        handle_photo_end()
+                        continue
 
         except serial.SerialException as e:
             print(f"\n⚠️ 设备断开: {e}，正在尝试重连...")

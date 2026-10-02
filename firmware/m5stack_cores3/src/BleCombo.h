@@ -93,6 +93,10 @@ static const uint8_t _hidReportDescriptor[] = {
 #define BLE_MOUSE_REPORT_ID 2
 #define BLE_MEDIA_REPORT_ID 3
 
+#define MOUSE_LEFT          1
+#define MOUSE_RIGHT         2
+#define MOUSE_MIDDLE        4
+
 // BLE HID Modifiers
 #define KEY_BLE_CTRL        0x01
 #define KEY_BLE_SHIFT       0x02

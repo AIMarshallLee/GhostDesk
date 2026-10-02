@@ -520,19 +520,32 @@ def run_walkie_talkie_daemon():
                         continue
 
                     elif line == "CMD:switch_window":
-                        print("\n🔀 [CoreS3 快捷台] 切换窗口 (Alt + Esc / Next Window)...")
+                        print("\n🔀 [CoreS3 快捷台] 切换应用 (Alt + Tab / Switch App)...")
                         if sys.platform == "win32":
                             import ctypes
                             user32 = ctypes.windll.user32
-                            # 1. 发送 Alt + Esc 瞬间切到下一个活动程序
                             VK_MENU = 0x12
-                            VK_ESCAPE = 0x1B
+                            VK_TAB = 0x09
                             KEYEVENTF_KEYUP = 0x0002
                             user32.keybd_event(VK_MENU, 0, 0, 0)
-                            user32.keybd_event(VK_ESCAPE, 0, 0, 0)
+                            user32.keybd_event(VK_TAB, 0, 0, 0)
                             time.sleep(0.03)
-                            user32.keybd_event(VK_ESCAPE, 0, KEYEVENTF_KEYUP, 0)
+                            user32.keybd_event(VK_TAB, 0, KEYEVENTF_KEYUP, 0)
                             user32.keybd_event(VK_MENU, 0, KEYEVENTF_KEYUP, 0)
+                        continue
+
+                    elif line == "CMD:select_all":
+                        print("\n📑 [CoreS3 快捷台] 全选 Ctrl + A")
+                        if sys.platform == "win32":
+                            import ctypes
+                            VK_CONTROL = 0x11
+                            VK_A = 0x41
+                            KEYEVENTF_KEYUP = 0x0002
+                            ctypes.windll.user32.keybd_event(VK_CONTROL, 0, 0, 0)
+                            ctypes.windll.user32.keybd_event(VK_A, 0, 0, 0)
+                            time.sleep(0.03)
+                            ctypes.windll.user32.keybd_event(VK_A, 0, KEYEVENTF_KEYUP, 0)
+                            ctypes.windll.user32.keybd_event(VK_CONTROL, 0, KEYEVENTF_KEYUP, 0)
                         continue
 
                     elif line == "CMD:copy":

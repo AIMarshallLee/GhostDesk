@@ -324,54 +324,66 @@ void drawAppleCutePet(int cx, int cy, BuddyEmotion emotion, int blink) {
 }
 
 // ==========================================
-// ==========================================
-// ==========================================
-// 顶栏：满屏超大三大选项卡 Tab [🎙️ 云端] [⌨️ 遥控] [📑 翻页] + 苹果风竖直微电量柱
+// 顶栏：两大功能主 Tab [云端语音 / 电脑遥控] [翻页] + 设备名徽标 + 苹果风竖直微电量柱
 // ==========================================
 void drawDynamicIsland() {
-  // Tab 1: 云端语音 (X: 4 ~ 98, 宽 94, 高 40)
+  // ── Tab 1: 语音/遥控功能主 Tab (X: 8, Y: 6, 宽 112, 高 38, R: 8) ──
+  // 支持 450ms 内双击直接在「云端语音」和「电脑遥控」之间平滑切换！
   if (currentMode == MODE_CORES3_MIC) {
-    canvas.fillRoundRect(4, 5, 94, 40, 8, 0x0317);
-    canvas.drawRoundRect(4, 5, 94, 40, 8, 0x07FF);
+    canvas.fillRoundRect(8, 6, 112, 38, 8, 0x0317);
+    canvas.drawRoundRect(8, 6, 112, 38, 8, 0x07FF);
     canvas.setTextColor(TFT_WHITE);
-  } else {
-    canvas.fillRoundRect(4, 5, 94, 40, 8, 0x18C3);
-    canvas.drawRoundRect(4, 5, 94, 40, 8, 0x3186);
-    canvas.setTextColor(0x7BEF);
-  }
-  canvas.setTextSize(1);
-  canvas.drawCenterString("云端", 51, 10);
-  canvas.drawCenterString("USB", 51, 26);
-
-  // Tab 2: 电脑遥控 (X: 102 ~ 196, 宽 94, 高 40)
-  if (currentMode == MODE_BLE_REMOTE) {
-    canvas.fillRoundRect(102, 5, 94, 40, 8, 0x39C0);
-    canvas.drawRoundRect(102, 5, 94, 40, 8, 0xFFE0);
+    canvas.setTextSize(1);
+    canvas.drawCenterString("云端语音", 64, 18);
+  } else if (currentMode == MODE_BLE_REMOTE) {
+    canvas.fillRoundRect(8, 6, 112, 38, 8, 0x39C0);
+    canvas.drawRoundRect(8, 6, 112, 38, 8, 0xFFE0);
     canvas.setTextColor(TFT_WHITE);
+    canvas.setTextSize(1);
+    canvas.drawCenterString("电脑遥控", 64, 18);
   } else {
-    canvas.fillRoundRect(102, 5, 94, 40, 8, 0x18C3);
-    canvas.drawRoundRect(102, 5, 94, 40, 8, 0x3186);
+    // 当前处于翻页模式：显示未选中样式
+    canvas.fillRoundRect(8, 6, 112, 38, 8, 0x18C3);
+    canvas.drawRoundRect(8, 6, 112, 38, 8, 0x3186);
     canvas.setTextColor(0x7BEF);
+    canvas.setTextSize(1);
+    canvas.drawCenterString("云端语音", 64, 18);
   }
-  canvas.setTextSize(1);
-  canvas.drawCenterString("遥控", 149, 10);
-  canvas.drawCenterString(devLabels[currentDevice], 149, 26);
 
-  // Tab 3: 翻页演讲 (X: 200 ~ 296, 宽 96, 高 40)
+  // ── Tab 2: 翻页功能主 Tab (X: 126, Y: 6, 宽 76, 高 38, R: 8) ──
   if (currentMode == MODE_PAGE_FLIP) {
-    canvas.fillRoundRect(200, 5, 96, 40, 8, 0x0320);
-    canvas.drawRoundRect(200, 5, 96, 40, 8, 0x07E0);
+    canvas.fillRoundRect(126, 6, 76, 38, 8, 0x0320);
+    canvas.drawRoundRect(126, 6, 76, 38, 8, 0x07E0);
     canvas.setTextColor(TFT_WHITE);
   } else {
-    canvas.fillRoundRect(200, 5, 96, 40, 8, 0x18C3);
-    canvas.drawRoundRect(200, 5, 96, 40, 8, 0x3186);
+    canvas.fillRoundRect(126, 6, 76, 38, 8, 0x18C3);
+    canvas.drawRoundRect(126, 6, 76, 38, 8, 0x3186);
     canvas.setTextColor(0x7BEF);
   }
   canvas.setTextSize(1);
-  canvas.drawCenterString("翻页", 248, 10);
-  canvas.drawCenterString(devLabels[currentDevice], 248, 26);
+  canvas.drawCenterString("翻页", 164, 18);
 
-  // 右侧边缘：苹果风竖直微电量柱 (X: 305 ~ 316, 宽 11, 高 38)
+  // ── 状态区：设备名精致徽标胶囊 (X: 208, Y: 10, 宽 82, 高 30, R: 6) ──
+  // 独立显示当前连接设备名（如 Marshall），且用户轻触直接弹出设备选择菜单
+  bool bleConnected = BleCombo.isConnected();
+  canvas.fillRoundRect(208, 10, 82, 30, 6, 0x10A3);
+  canvas.drawRoundRect(208, 10, 82, 30, 6, bleConnected ? 0x07FF : 0x52AA);
+  canvas.setTextColor(bleConnected ? 0x07FF : 0xD69A);
+  canvas.setTextSize(1);
+  canvas.drawCenterString(devLabels[currentDevice], 249, 18);
+
+  // 蓝牙状态极简微指示点 (X: 297, Y: 25, 直径 4px)
+  if (bleConnected) {
+    canvas.fillCircle(297, 25, 2, 0x07FF); // 已连接：稳定常亮纯净科技青
+  } else {
+    // 未连接：微弱柔和呼吸闪烁 (周期 1000ms)
+    uint32_t phase = millis() % 1000;
+    if (phase < 500) {
+      canvas.fillCircle(297, 25, 2, 0x0256); // 柔和深蓝
+    }
+  }
+
+  // 右侧边缘：苹果风竖直微电量柱 (X: 305 ~ 316, 宽 11, 高 36)
   int bat = state.cachedBattery;
   if (bat < 0) bat = 0;
   if (bat > 100) bat = 100;
@@ -394,18 +406,6 @@ void drawDynamicIsland() {
   if (fillH > 0) {
     canvas.fillRect(307, 40 - fillH, 7, fillH, batColor);
   }
-
-  // 蓝牙状态极简微指示点 (X: 299, Y: 24, 直径 4px 微点，电池左侧紧密陪伴)
-  bool bleConnected = BleCombo.isConnected();
-  if (bleConnected) {
-    canvas.fillCircle(299, 24, 2, 0x07FF); // 已连接：稳定常亮纯净科技青
-  } else {
-    // 未连接：微弱柔和呼吸闪烁 (周期 1000ms)
-    uint32_t phase = millis() % 1000;
-    if (phase < 500) {
-      canvas.fillCircle(299, 24, 2, 0x0256); // 柔和深蓝
-    }
-  }
 }
 
 // ==========================================
@@ -418,18 +418,18 @@ void drawBottomActionBar() {
   if (now < state.sentNoticeUntil) {
     if (state.sentNoticeState == 1) {
       // 成功：翠绿长方形「✓ 已发送」
-      canvas.fillRoundRect(12, 178, 102, 50, 10, 0x0320); // 墨绿色卡片背景
-      canvas.drawRoundRect(12, 178, 102, 50, 10, 0x07E0); // 翠绿醒目边框
+      canvas.fillRoundRect(8, 178, 112, 50, 8, 0x0320); // 墨绿色卡片背景
+      canvas.drawRoundRect(8, 178, 112, 50, 8, 0x07E0); // 翠绿醒目边框
       canvas.setTextColor(0x07E0);
       canvas.setTextSize(1);
-      canvas.drawCenterString("✓ 已发送", 63, 195);
+      canvas.drawCenterString("✓ 已发送", 64, 195);
     } else if (state.sentNoticeState == 2) {
       // 失败：朱红长方形「✕ 未发送」
-      canvas.fillRoundRect(12, 178, 102, 50, 10, 0x4000); // 暗红底
-      canvas.drawRoundRect(12, 178, 102, 50, 10, 0xF800); // 亮红边框
+      canvas.fillRoundRect(8, 178, 112, 50, 8, 0x4000); // 暗红底
+      canvas.drawRoundRect(8, 178, 112, 50, 8, 0xF800); // 亮红边框
       canvas.setTextColor(0xF800);
       canvas.setTextSize(1);
-      canvas.drawCenterString("✕ 未发送", 63, 195);
+      canvas.drawCenterString("✕ 未发送", 64, 195);
     }
   }
 
@@ -449,39 +449,39 @@ void drawBottomActionBar() {
 
   if (currentMode == MODE_CORES3_MIC) {
     // ── Tab 1: 云端语音底栏 ──
-    // 左下角：【取消】按钮 (与上方「云端」完全对齐：X: 4, Y: 195, 宽 94, 高 40)
-    canvas.fillRoundRect(4, 195, 94, 40, 8, cancelBgColor);
-    canvas.drawRoundRect(4, 195, 94, 40, 8, cancelBorderColor);
+    // 左下角：【取消】按钮 (与上方左侧 Tab 严格对齐：X: 8, Y: 195, 宽 112, 高 40)
+    canvas.fillRoundRect(8, 195, 112, 40, 8, cancelBgColor);
+    canvas.drawRoundRect(8, 195, 112, 40, 8, cancelBorderColor);
     canvas.setTextColor(cancelTextColor);
     canvas.setTextSize(1);
-    canvas.drawCenterString("取消", 51, 208);
+    canvas.drawCenterString("取消", 64, 208);
 
-    // 右下角：【完成】发送按钮 (与上方「翻页」完全对齐：X: 200, Y: 195, 宽 96, 高 40)
-    canvas.fillRoundRect(200, 195, 96, 40, 8, sendBgColor);
-    canvas.drawRoundRect(200, 195, 96, 40, 8, sendBorderColor);
+    // 右下角：【完成】发送按钮 (与左侧对称：X: 200, Y: 195, 宽 112, 高 40)
+    canvas.fillRoundRect(200, 195, 112, 40, 8, sendBgColor);
+    canvas.drawRoundRect(200, 195, 112, 40, 8, sendBorderColor);
     canvas.setTextColor(sendTextColor);
     canvas.setTextSize(1);
     if (state.isRecordingVoice) {
       uint32_t sec = (millis() - state.recordingStartTime) / 1000;
-      canvas.drawCenterString("完成 " + String(sec) + "s", 248, 208);
+      canvas.drawCenterString("完成 " + String(sec) + "s", 256, 208);
     } else {
-      canvas.drawCenterString("完成", 248, 208);
+      canvas.drawCenterString("完成", 256, 208);
     }
   } else if (currentMode == MODE_BLE_REMOTE) {
     // ── Tab 2: 电脑遥控模式底栏 ──
-    // 左下角：【取消】按钮 (与上方「云端」完全对齐：X: 4, Y: 195, 宽 94, 高 40)
-    canvas.fillRoundRect(4, 195, 94, 40, 8, cancelBgColor);
-    canvas.drawRoundRect(4, 195, 94, 40, 8, cancelBorderColor);
+    // 左下角：【取消】按钮 (X: 8, Y: 195, 宽 112, 高 40)
+    canvas.fillRoundRect(8, 195, 112, 40, 8, cancelBgColor);
+    canvas.drawRoundRect(8, 195, 112, 40, 8, cancelBorderColor);
     canvas.setTextColor(cancelTextColor);
     canvas.setTextSize(1);
-    canvas.drawCenterString("取消", 51, 208);
+    canvas.drawCenterString("取消", 64, 208);
 
-    // 右下角：【发送】按钮 (与上方「翻页」完全对齐：X: 200, Y: 195, 宽 96, 高 40)
-    canvas.fillRoundRect(200, 195, 96, 40, 8, sendBgColor);
-    canvas.drawRoundRect(200, 195, 96, 40, 8, sendBorderColor);
+    // 右下角：【发送】按钮 (X: 200, Y: 195, 宽 112, 高 40)
+    canvas.fillRoundRect(200, 195, 112, 40, 8, sendBgColor);
+    canvas.drawRoundRect(200, 195, 112, 40, 8, sendBorderColor);
     canvas.setTextColor(sendTextColor);
     canvas.setTextSize(1);
-    canvas.drawCenterString("发送", 248, 208);
+    canvas.drawCenterString("发送", 256, 208);
   }
 }
 
@@ -862,10 +862,10 @@ void loop() {
   auto touch = M5.Touch.getDetail();
   bool isTouching = touch.isPressed();
   static bool touchLatched = false; // 严格单次按下锁
-  static uint32_t tab2PressStart = 0;
-  static bool tab2LongTriggered = false;
   static uint32_t tab3PressStart = 0;
   static bool tab3LongTriggered = false;
+  static uint32_t lastVoiceTabClick = 0;
+  static DeviceMode lastVoiceMode = MODE_CORES3_MIC;
 
   if (isTouching) {
     state.lastUserActionTime = now;
@@ -930,22 +930,8 @@ void loop() {
     }
 
     // ── 情况 2: 正常工作界面中的长按与点击 ──
-    // 1. 长按顶栏「遥控」Tab 1.5 秒：触发当前设备通道重新广播配对
-    if (ty <= 54 && tx >= 100 && tx < 198) {
-      if (tab2PressStart == 0) tab2PressStart = now;
-      if (!tab2LongTriggered && (now - tab2PressStart >= 1500)) {
-        tab2LongTriggered = true;
-        BleCombo.startAdvertising();
-        showToast("已开启当前设备蓝牙配对", 2000);
-        renderScreen();
-      }
-    } else {
-      tab2PressStart = 0;
-      tab2LongTriggered = false;
-    }
-
-    // 2. 长按顶栏「翻页」Tab 1.5 秒：唤出「选择连接设备」大菜单，由用户自由选择！
-    if (ty <= 54 && tx >= 198) {
+    // 1. 长按顶栏「翻页」Tab (tx >= 122 && tx < 206) 1.5 秒：唤出「选择连接设备」大菜单！
+    if (ty <= 50 && tx >= 122 && tx < 206) {
       if (tab3PressStart == 0) tab3PressStart = now;
       if (!tab3LongTriggered && (now - tab3PressStart >= 1500)) {
         tab3LongTriggered = true;
@@ -961,26 +947,40 @@ void loop() {
     if (!touchLatched) {
       touchLatched = true; // 锁定本次触摸，防止连击
 
-      // 区域 A：顶部导航选项卡 (Y <= 54，对应顶栏三大加大 Tab，零死角命中)
-      if (ty <= 54) {
-        if (tx < 100) {
-          // 点击 Tab 1:「云端」
-          if (currentMode != MODE_CORES3_MIC) {
-            if (state.isBleVoiceActive) state.isBleVoiceActive = false;
-            state.pendingReturnTime = 0;
-            currentMode = MODE_CORES3_MIC;
+      // 区域 A：顶部导航选项卡 (Y <= 50，对应顶栏两大主 Tab + 设备胶囊)
+      if (ty <= 50) {
+        if (tx < 122) {
+          // ── 点击 Tab 1: 语音功能区 ──
+          if (currentMode == MODE_PAGE_FLIP) {
+            // 从翻页切回语音模式 (恢复之前使用的云端或电脑遥控)
+            currentMode = lastVoiceMode;
+            lastVoiceTabClick = now;
+            renderScreen();
+          } else {
+            // 当前已经在语音模式：检测是否在 450ms 内双击！
+            if (now - lastVoiceTabClick < 450 && lastVoiceTabClick > 0) {
+              // 双击平滑切换「云端语音」与「电脑遥控」
+              if (currentMode == MODE_CORES3_MIC) {
+                if (state.isRecordingVoice) cancelVoiceRecording();
+                currentMode = MODE_BLE_REMOTE;
+                lastVoiceMode = MODE_BLE_REMOTE;
+                showToast("已切换: 电脑遥控", 1500);
+              } else {
+                if (state.isBleVoiceActive) state.isBleVoiceActive = false;
+                state.pendingReturnTime = 0;
+                currentMode = MODE_CORES3_MIC;
+                lastVoiceMode = MODE_CORES3_MIC;
+                showToast("已切换: 云端语音", 1500);
+              }
+              lastVoiceTabClick = 0; // 重置防止三击连击
+            } else {
+              lastVoiceTabClick = now;
+            }
             renderScreen();
           }
-        } else if (tx >= 100 && tx < 198) {
-          // 点击 Tab 2:「遥控」
-          if (currentMode != MODE_BLE_REMOTE) {
-            if (state.isRecordingVoice) cancelVoiceRecording();
-            state.pendingReturnTime = 0;
-            currentMode = MODE_BLE_REMOTE;
-            renderScreen();
-          }
-        } else {
-          // 点击 Tab 3:「翻页」 (tx >= 198 覆盖全部右侧区域)
+          return;
+        } else if (tx >= 122 && tx < 206) {
+          // ── 点击 Tab 2:「翻页」 ──
           if (currentMode != MODE_PAGE_FLIP) {
             if (state.isRecordingVoice) cancelVoiceRecording();
             if (state.isBleVoiceActive) state.isBleVoiceActive = false;
@@ -988,11 +988,17 @@ void loop() {
             currentMode = MODE_PAGE_FLIP;
             renderScreen();
           }
+          return;
+        } else if (tx >= 206 && tx <= 296) {
+          // ── 点击设备胶囊：直接呼出 4 台设备选择菜单！ ──
+          state.isSelectingDevice = true;
+          renderScreen();
+          return;
         }
         return; // 顶栏点击必须绝对 100% 拦截，绝不允许穿透到底部触发语音！
       }
 
-      // 区域 B：核心操作区 (Y > 54)
+      // 区域 B：核心操作区 (Y > 50)
       if (currentMode == MODE_PAGE_FLIP) {
         // ── Tab 3: 翻页遥控模式 (左半边上一页，右半边下一页，250ms 点击闪烁动效) ──
         if (tx < 160) {
@@ -1014,7 +1020,7 @@ void loop() {
         return;
       } else if (currentMode == MODE_CORES3_MIC) {
         // ── Tab 1: 云端语音模式 (对齐顶栏无条件即触即发，零死角分区) ──
-        if (ty >= 170 && tx < 160) {
+        if (ty >= 170 && tx < 150) {
           // 左下角：无条件【取消】(点亮按键高亮变色 250ms)
           state.btnCancelHighlightUntil = now + 250;
           if (state.isRecordingVoice) {
@@ -1022,7 +1028,7 @@ void loop() {
           } else {
             setEmotion(EMOTION_IDLE, "已取消", 800);
           }
-        } else if (ty >= 170 && tx >= 160) {
+        } else if (ty >= 170 && tx >= 150) {
           // 右下角：【完成】发送 (点亮按键高亮变色 250ms)
           state.btnSendHighlightUntil = now + 250;
           if (state.isRecordingVoice) {
@@ -1042,8 +1048,8 @@ void loop() {
         return;
       } else {
         // ── Tab 2: 电脑遥控模式 (完全复刻顶栏零门槛逻辑，无条件响应) ──
-        // 1. 左下大区域【取消】判定区 (ty >= 170 && tx < 160)
-        if (ty >= 170 && tx < 160) {
+        // 1. 左下大区域【取消】判定区 (ty >= 170 && tx < 150)
+        if (ty >= 170 && tx < 150) {
           state.btnCancelHighlightUntil = now + 250; // 点亮按键高亮变色 250ms
           bool wasActive = state.isBleVoiceActive;
           state.isBleVoiceActive = false;
@@ -1078,8 +1084,8 @@ void loop() {
           return;
         }
 
-        // 2. 右下大区域【发送】判定区 (ty >= 170 && tx >= 160)
-        if (ty >= 170 && tx >= 160) {
+        // 2. 右下大区域【发送】判定区 (ty >= 170 && tx >= 150)
+        if (ty >= 170 && tx >= 150) {
           state.btnSendHighlightUntil = now + 250; // 点亮按键高亮变色 250ms
           state.pendingReturnTime = 0; // 清除排队
           state.isBleVoiceActive = false;
@@ -1129,8 +1135,6 @@ void loop() {
   } else {
     // 手指离开屏幕，立即复位锁，准备下一次极速触发
     touchLatched = false;
-    tab2PressStart = 0;
-    tab2LongTriggered = false;
     tab3PressStart = 0;
     tab3LongTriggered = false;
   }

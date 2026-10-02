@@ -531,7 +531,7 @@ def run_walkie_talkie_daemon():
                                     if dx != 0 or dy != 0:
                                         user32.mouse_event(0x0001, ctypes.c_long(dx), ctypes.c_long(dy), 0, 0)
                                     if wheel != 0:
-                                        user32.mouse_event(0x0800, 0, 0, wheel * 120, 0)
+                                        user32.mouse_event(0x0800, 0, 0, ctypes.c_long(wheel * 120).value, 0)
                             except Exception:
                                 pass
                     elif line == "MODE:TOUCH_MOUSE":

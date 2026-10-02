@@ -111,7 +111,7 @@ struct SystemState {
   uint32_t btnMouseLeftHighlight = 0;   // 鼠标左键高亮
   uint32_t btnMouseRightHighlight = 0;  // 鼠标右键高亮
 
-  // 苹果级触控板手势引擎状态 (指哪打哪 / 单指单击左键 / 双击打开 / 双指右键 / 双指滚轮)
+  // 触控板手势引擎与右侧专属滚轮条状态
   int mouseLastX = -1;
   int mouseLastY = -1;
   int mouseLastScrollY = -1;
@@ -126,6 +126,14 @@ struct SystemState {
   int mouseLastTapY = 0;
   int mouseVisualX = -1;
   int mouseVisualY = -1;
+
+  // 右侧专属物理级垂直滚轮条
+  bool mouseInScrollStrip = false;
+  int mouseScrollLastY = -1;
+  float mouseScrollAccumulator = 0.0f;
+  int mouseScrollVisualY = -1;
+  uint32_t btnScrollUpHighlight = 0;
+  uint32_t btnScrollDownHighlight = 0;
 
   uint32_t lastUserActionTime = 0;      // 最后一次用户触控操作时间
   bool isDimmed = false;                // 是否处于低功耗微暗屏状态
@@ -548,38 +556,75 @@ void drawSystemShortcutsView(uint32_t now) {
 }
 
 // ==========================================
-// 视图 3：触控鼠标模式 (全屏 Apple Magic Trackpad：单指移动/双指滚轮/单指双击/双指右键)
+// 视图 3：触控鼠标模式 (左侧高精度触控板 + 右侧专属垂直滚轮条)
 // ==========================================
 void drawTouchMouseView(uint32_t now) {
-  // 1. 顶部极简状态栏 (Y: 6 ~ 42)
-  canvas.setTextColor(TFT_WHITE);
-  canvas.setTextSize(1);
-  canvas.drawString(" 苹果极简触控板", 12, 16);
-
-  // 右上角胶囊型【返回语音】按钮 (X: 226, Y: 8, W: 86, H: 28, R: 14)
+  // 1. 顶部极简状态栏 (Y: 6 ~ 38)
+  // 用户特别要求：移除“苹果触控板”与字符缺失小方框，只保留右上角胶囊型【返回语音】按钮
   bool isBackPressed = (now < state.btnMouseHighlight);
-  canvas.fillRoundRect(226, 8, 86, 28, 14, isBackPressed ? 0x2965 : 0x18C3);
-  canvas.drawRoundRect(226, 8, 86, 28, 14, isBackPressed ? 0x9CDF : 0x39E7);
+  canvas.fillRoundRect(220, 8, 94, 28, 14, isBackPressed ? 0x2965 : 0x18C3);
+  canvas.drawRoundRect(220, 8, 94, 28, 14, isBackPressed ? 0x9CDF : 0x39E7);
   canvas.setTextColor(isBackPressed ? TFT_WHITE : 0x9CDF);
-  canvas.drawCenterString("返回语音", 269, 15);
+  canvas.setTextSize(1);
+  canvas.drawCenterString("返回语音", 267, 15);
 
-  // 2. 硕大、奢华的超大触控板全域 (X: 6, Y: 44, W: 308, H: 190, R: 10)
-  canvas.fillRoundRect(6, 44, 308, 190, 10, 0x10A2);
-  canvas.drawRoundRect(6, 44, 308, 190, 10, 0x2965);
+  // 2. 左侧：高精度触控板主域 (X: 6, Y: 42, W: 254, H: 192, R: 8)
+  canvas.fillRoundRect(6, 42, 254, 192, 8, 0x10A2);
+  canvas.drawRoundRect(6, 42, 254, 192, 8, 0x2124);
 
-  // 触控板核心手势指引 (极具现代感与通透呼吸感)
+  // 触控板核心手势指引 (极简微光灰)
   canvas.setTextColor(0x52AA);
   canvas.setTextSize(1);
-  canvas.drawCenterString("单指划动：精准光标   |   双指划动：平滑滚轮", 160, 95);
-  canvas.drawCenterString("单指轻击：左键单击   |   单指双击：打开文件", 160, 125);
+  canvas.drawCenterString("单指划动：光标移动", 133, 85);
+  canvas.drawCenterString("单指轻击：左键单击", 133, 115);
+  canvas.drawCenterString("单指双击：打开文件", 133, 145);
   canvas.setTextColor(0x39E7);
-  canvas.drawCenterString("双指轻击：右键菜单", 160, 155);
+  canvas.drawCenterString("双指轻击：右键菜单", 133, 175);
 
-  // 手指触碰时的灵动涟漪光圈动效
-  if (state.mouseVisualX >= 6 && state.mouseVisualX <= 314 && state.mouseVisualY >= 44 && state.mouseVisualY <= 234) {
+  // 左侧触控板：手指触碰时的灵动涟漪光圈动效
+  if (!state.mouseInScrollStrip && state.mouseVisualX >= 6 && state.mouseVisualX <= 260 && state.mouseVisualY >= 42 && state.mouseVisualY <= 234) {
     canvas.drawCircle(state.mouseVisualX, state.mouseVisualY, 16, 0x07FF);
     canvas.fillCircle(state.mouseVisualX, state.mouseVisualY, 5, TFT_WHITE);
   }
+
+  // 3. 右侧：专属物理级垂直滚轮条 (X: 268, Y: 42, W: 46, H: 192, R: 8)
+  bool isStripActive = state.mouseInScrollStrip;
+  bool isUpActive = (now < state.btnScrollUpHighlight);
+  bool isDownActive = (now < state.btnScrollDownHighlight);
+
+  // 滚轮条底槽
+  canvas.fillRoundRect(268, 42, 46, 192, 8, isStripActive ? 0x18E4 : 0x10A2);
+  canvas.drawRoundRect(268, 42, 46, 192, 8, isStripActive ? 0x07FF : 0x3186);
+
+  // 顶部【▲ 上】区域 (Y: 44 ~ 74)
+  canvas.fillRoundRect(271, 45, 40, 26, 6, isUpActive ? 0x0320 : 0x18C3);
+  canvas.setTextColor(isUpActive ? TFT_WHITE : 0x07FF);
+  canvas.setTextSize(1);
+  canvas.drawCenterString("上", 291, 52);
+
+  // 底部【▼ 下】区域 (Y: 204 ~ 231)
+  canvas.fillRoundRect(271, 204, 40, 26, 6, isDownActive ? 0x0320 : 0x18C3);
+  canvas.setTextColor(isDownActive ? TFT_WHITE : 0x07FF);
+  canvas.setTextSize(1);
+  canvas.drawCenterString("下", 291, 211);
+
+  // 中间滑道轨道槽 (Y: 74 ~ 200)
+  canvas.drawFastVLine(291, 74, 126, 0x2124);
+  canvas.drawFastVLine(290, 74, 126, 0x3186);
+
+  // 滑块 Thumb (动态随手指滑动)
+  int thumbY = 124; // 默认居中
+  if (isStripActive && state.mouseScrollVisualY >= 74 && state.mouseScrollVisualY <= 200) {
+    thumbY = state.mouseScrollVisualY - 13;
+    if (thumbY < 74) thumbY = 74;
+    if (thumbY > 174) thumbY = 174;
+  }
+  canvas.fillRoundRect(275, thumbY, 32, 26, 6, isStripActive ? 0x07FF : 0x2965);
+  canvas.drawRoundRect(275, thumbY, 32, 26, 6, isStripActive ? TFT_WHITE : 0x4A69);
+  uint16_t notchColor = isStripActive ? 0x0000 : 0x7BEF;
+  canvas.drawFastHLine(283, thumbY + 8, 16, notchColor);
+  canvas.drawFastHLine(283, thumbY + 13, 16, notchColor);
+  canvas.drawFastHLine(283, thumbY + 18, 16, notchColor);
 }
 
 // ==========================================
@@ -1249,8 +1294,8 @@ void loop() {
       tab2LongTriggered = false;
     }
 
-    // ── 触控鼠标模式：右上角【返回语音】按钮 (ty <= 44 && tx >= 210) ──
-    if (currentMode == MODE_TOUCH_MOUSE && ty <= 44 && tx >= 210) {
+    // ── 触控鼠标模式：右上角【返回语音】按钮 (ty <= 40 && tx >= 210) ──
+    if (currentMode == MODE_TOUCH_MOUSE && ty <= 40 && tx >= 210) {
       if (!touchLatched) {
         touchLatched = true;
         currentMode = activeVoiceMode;
@@ -1260,37 +1305,69 @@ void loop() {
       return;
     }
 
-    // ── 触控鼠标模式：全域 Apple Magic Trackpad 手势引擎 (Y > 44) ──
-    if (currentMode == MODE_TOUCH_MOUSE && ty > 44) {
+    // ── 触控鼠标模式：核心交互区 (Y > 40) ──
+    if (currentMode == MODE_TOUCH_MOUSE && ty > 40) {
       if (touchCount > state.mouseMaxFingers) {
         state.mouseMaxFingers = touchCount;
       }
-      state.mouseVisualX = tx;
-      state.mouseVisualY = ty;
 
-      // ── 情况 A：双指操作 (touchCount >= 2) -> 原生平滑滚轮滚动 ──
-      if (touchCount >= 2) {
-        auto p0 = M5.Touch.getTouchPointRaw(0);
-        auto p1 = M5.Touch.getTouchPointRaw(1);
-        int midY = (p0.y + p1.y) / 2;
+      // ── 分流 1：右侧专属物理级垂直滚轮条 (tx >= 265) ──
+      // 用户需求：双指在小屏上滑动翻页不易触发，最右侧加专属滚轮条！
+      if (tx >= 265) {
+        state.mouseInScrollStrip = true;
+        state.mouseScrollVisualY = ty;
 
-        if (state.mouseLastScrollY < 0) {
-          state.mouseLastScrollY = midY;
+        if (state.mouseScrollLastY < 0) {
+          state.mouseScrollLastY = ty;
+          state.mouseTouchStartY = ty;
+          state.mouseTouchStartX = tx;
+          state.mouseTouchStartTime = now;
+          state.mouseScrollAccumulator = 0.0f;
+
+          // 若直接点中顶部 [上] 按钮 (ty < 74)
+          if (ty < 74) {
+            state.btnScrollUpHighlight = now + 200;
+            if (BleCombo.isConnected()) BleCombo.moveMouse(0, 0, 3);
+            Serial.println("MOUSE:0,0,3");
+            renderScreen();
+          } else if (ty > 202) {
+            // 若直接点中底部 [下] 按钮 (ty > 202)
+            state.btnScrollDownHighlight = now + 200;
+            if (BleCombo.isConnected()) BleCombo.moveMouse(0, 0, -3);
+            Serial.println("MOUSE:0,0,-3");
+            renderScreen();
+          }
         } else {
-          int dy = midY - state.mouseLastScrollY;
-          if (abs(dy) >= 4) {
-            int8_t wheel = (dy < 0) ? 1 : -1;
-            if (BleCombo.isConnected()) BleCombo.moveMouse(0, 0, wheel);
-            Serial.printf("MOUSE:0,0,%d\n", wheel);
-            state.mouseLastScrollY = midY;
+          int dy = ty - state.mouseScrollLastY;
+          state.mouseScrollLastY = ty;
+
+          if (dy != 0) {
+            // 向上滑 (dy < 0) -> 滚轮向上滚动 (+wheel)
+            // 向下滑 (dy > 0) -> 滚轮向下滚动 (-wheel)
+            state.mouseScrollAccumulator += (-dy) * 0.18f;
+
+            int steps = (int)state.mouseScrollAccumulator;
+            if (steps != 0) {
+              state.mouseScrollAccumulator -= steps;
+              if (BleCombo.isConnected()) BleCombo.moveMouse(0, 0, (int8_t)steps);
+              Serial.printf("MOUSE:0,0,%d\n", steps);
+            }
+            renderScreen();
           }
         }
-        state.mouseLastX = -1; // 双指滑动不干扰光标
-        state.mouseLastY = -1;
         return;
       }
 
-      // ── 情况 B：单指操作 -> 苹果低通滤波 EMA + 动力学加速度 (指哪打哪) ──
+      // ── 分流 2：左侧高精度触控板主域 (tx < 265) ──
+      state.mouseInScrollStrip = false;
+      state.mouseVisualX = tx;
+      state.mouseVisualY = ty;
+
+      if (touchCount >= 2) {
+        state.mouseMaxFingers = touchCount; // 记录多指操作
+      }
+
+      // 单指移动光标 -> EMA 低通滤波 + 苹果动力学非线性加速
       if (state.mouseLastX < 0 || state.mouseLastY < 0) {
         state.mouseLastX = tx;
         state.mouseLastY = ty;
@@ -1306,7 +1383,7 @@ void loop() {
         state.mouseLastY = ty;
 
         if (rawDx != 0 || rawDy != 0) {
-          // 1. 低通滤波 (EMA)，消除电容屏固有电气抖动，带来纯净顺滑的手感
+          // 1. 低通滤波 (EMA)，消除电容屏固有电气微抖动
           state.mouseFilterDx = rawDx * 0.8f + state.mouseFilterDx * 0.2f;
           state.mouseFilterDy = rawDy * 0.8f + state.mouseFilterDy * 0.2f;
 
@@ -1314,11 +1391,11 @@ void loop() {
           float speed = sqrtf(state.mouseFilterDx * state.mouseFilterDx + state.mouseFilterDy * state.mouseFilterDy);
           float gain;
           if (speed <= 1.5f) {
-            gain = 1.3f; // 慢速微调：高保真 1:1，像素级对齐图标与菜单
+            gain = 1.3f; // 慢速微调：高保真 1:1，像素级对齐
           } else if (speed <= 6.0f) {
-            gain = 1.6f + (speed - 1.5f) * 0.4f; // 巡航舒适速度
+            gain = 1.6f + (speed - 1.5f) * 0.4f; // 舒适巡航
           } else {
-            gain = 3.4f + (speed - 6.0f) * 0.3f; // 快速滑动跨屏飞跃
+            gain = 3.4f + (speed - 6.0f) * 0.3f; // 快速跨屏飞跃
             if (gain > 6.0f) gain = 6.0f;
           }
 
@@ -1742,37 +1819,46 @@ void loop() {
       }
     }
   } else {
-    // 手指离开屏幕，立即结算触控板苹果手势 (单击左键 / 双击打开 / 双指右键)
+    // 手指离开屏幕，结算触控板手势 (单击左键 / 双击打开 / 双指右键)
     if (currentMode == MODE_TOUCH_MOUSE) {
-      uint32_t touchDuration = (state.mouseTouchStartTime > 0) ? (now - state.mouseTouchStartTime) : 999;
-      int ddx = (state.mouseTouchStartX > 0) ? abs(state.mouseLastX - state.mouseTouchStartX) : 999;
-      int ddy = (state.mouseTouchStartY > 0) ? abs(state.mouseLastY - state.mouseTouchStartY) : 999;
+      if (state.mouseInScrollStrip) {
+        // 从右侧滚轮条抬手：清理滚轮状态
+        state.mouseInScrollStrip = false;
+        state.mouseScrollLastY = -1;
+        state.mouseScrollAccumulator = 0.0f;
+        state.mouseScrollVisualY = -1;
+      } else {
+        // 从左侧触控板抬手：判定轻击手势
+        uint32_t touchDuration = (state.mouseTouchStartTime > 0) ? (now - state.mouseTouchStartTime) : 999;
+        int ddx = (state.mouseTouchStartX > 0) ? abs(state.mouseLastX - state.mouseTouchStartX) : 999;
+        int ddy = (state.mouseTouchStartY > 0) ? abs(state.mouseLastY - state.mouseTouchStartY) : 999;
 
-      if (touchDuration < 280 && ddx < 16 && ddy < 16 && state.mouseTouchStartY > 44) {
-        if (state.mouseMaxFingers >= 2) {
-          // ── 双指轻击：鼠标右键单击 (唤出快捷菜单) ──
-          if (BleCombo.isConnected()) BleCombo.mouseClick(MOUSE_RIGHT);
-          Serial.println("CMD:mouse_right");
-          showToast("右键菜单", 600);
-        } else {
-          // ── 单指轻击：检测是否为双击 ──
-          if (now - state.mouseLastTapTime < 320 && abs(state.mouseTouchStartX - state.mouseLastTapX) < 22 && abs(state.mouseTouchStartY - state.mouseLastTapY) < 22) {
-            // 单指快速双击：鼠标左键双击 (打开文件 / 文件夹 / 程序)！
-            if (BleCombo.isConnected()) {
-              BleCombo.mouseClick(MOUSE_LEFT);
-              delay(25);
-              BleCombo.mouseClick(MOUSE_LEFT);
-            }
-            Serial.println("CMD:mouse_double_click");
-            state.mouseLastTapTime = 0; // 重置双击计时
-            showToast("双击打开", 600);
+        if (touchDuration < 280 && ddx < 16 && ddy < 16 && state.mouseTouchStartY > 40 && state.mouseTouchStartX < 265) {
+          if (state.mouseMaxFingers >= 2) {
+            // ── 双指轻击：鼠标右键单击 (唤出快捷菜单) ──
+            if (BleCombo.isConnected()) BleCombo.mouseClick(MOUSE_RIGHT);
+            Serial.println("CMD:mouse_right");
+            showToast("右键菜单", 600);
           } else {
-            // 单指单击：鼠标左键单击！
-            if (BleCombo.isConnected()) BleCombo.mouseClick(MOUSE_LEFT);
-            Serial.println("CMD:mouse_left");
-            state.mouseLastTapTime = now;
-            state.mouseLastTapX = state.mouseTouchStartX;
-            state.mouseLastTapY = state.mouseTouchStartY;
+            // ── 单指轻击：检测是否为双击 ──
+            if (now - state.mouseLastTapTime < 320 && abs(state.mouseTouchStartX - state.mouseLastTapX) < 22 && abs(state.mouseTouchStartY - state.mouseLastTapY) < 22) {
+              // 单指快速双击：鼠标左键双击 (打开文件 / 文件夹 / 程序)！
+              if (BleCombo.isConnected()) {
+                BleCombo.mouseClick(MOUSE_LEFT);
+                delay(25);
+                BleCombo.mouseClick(MOUSE_LEFT);
+              }
+              Serial.println("CMD:mouse_double_click");
+              state.mouseLastTapTime = 0; // 重置双击计时
+              showToast("双击打开", 600);
+            } else {
+              // 单指单击：鼠标左键单击！
+              if (BleCombo.isConnected()) BleCombo.mouseClick(MOUSE_LEFT);
+              Serial.println("CMD:mouse_left");
+              state.mouseLastTapTime = now;
+              state.mouseLastTapX = state.mouseTouchStartX;
+              state.mouseLastTapY = state.mouseTouchStartY;
+            }
           }
         }
       }
@@ -1780,6 +1866,8 @@ void loop() {
       state.mouseLastX = -1;
       state.mouseLastY = -1;
       state.mouseLastScrollY = -1;
+      state.mouseScrollLastY = -1;
+      state.mouseInScrollStrip = false;
       state.mouseTouchStartTime = 0;
       state.mouseTouchStartX = 0;
       state.mouseTouchStartY = 0;

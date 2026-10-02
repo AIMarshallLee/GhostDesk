@@ -407,6 +407,124 @@ def run_walkie_talkie_daemon():
                             ctypes.windll.user32.keybd_event(VK_NEXT, 0, KEYEVENTF_EXTENDEDKEY | KEYEVENTF_KEYUP, 0)
                         continue
 
+                    elif line == "CMD:vol_up":
+                        print("\n🔊 [CoreS3 多媒体] 音量增加 +")
+                        if sys.platform == "win32":
+                            import ctypes
+                            VK_VOLUME_UP = 0xAF
+                            KEYEVENTF_KEYUP = 0x0002
+                            ctypes.windll.user32.keybd_event(VK_VOLUME_UP, 0, 0, 0)
+                            time.sleep(0.02)
+                            ctypes.windll.user32.keybd_event(VK_VOLUME_UP, 0, KEYEVENTF_KEYUP, 0)
+                        continue
+
+                    elif line == "CMD:vol_down":
+                        print("\n🔉 [CoreS3 多媒体] 音量减小 -")
+                        if sys.platform == "win32":
+                            import ctypes
+                            VK_VOLUME_DOWN = 0xAE
+                            KEYEVENTF_KEYUP = 0x0002
+                            ctypes.windll.user32.keybd_event(VK_VOLUME_DOWN, 0, 0, 0)
+                            time.sleep(0.02)
+                            ctypes.windll.user32.keybd_event(VK_VOLUME_DOWN, 0, KEYEVENTF_KEYUP, 0)
+                        continue
+
+                    elif line == "CMD:mute":
+                        print("\n🔇 [CoreS3 多媒体] 静音开关 Mute")
+                        if sys.platform == "win32":
+                            import ctypes
+                            VK_VOLUME_MUTE = 0xAD
+                            KEYEVENTF_KEYUP = 0x0002
+                            ctypes.windll.user32.keybd_event(VK_VOLUME_MUTE, 0, 0, 0)
+                            time.sleep(0.02)
+                            ctypes.windll.user32.keybd_event(VK_VOLUME_MUTE, 0, KEYEVENTF_KEYUP, 0)
+                        continue
+
+                    elif line == "CMD:play_pause":
+                        print("\n⏯️ [CoreS3 多媒体] 播放/暂停")
+                        if sys.platform == "win32":
+                            import ctypes
+                            VK_MEDIA_PLAY_PAUSE = 0xB3
+                            KEYEVENTF_KEYUP = 0x0002
+                            ctypes.windll.user32.keybd_event(VK_MEDIA_PLAY_PAUSE, 0, 0, 0)
+                            time.sleep(0.02)
+                            ctypes.windll.user32.keybd_event(VK_MEDIA_PLAY_PAUSE, 0, KEYEVENTF_KEYUP, 0)
+                        continue
+
+                    elif line == "CMD:next_track":
+                        print("\n⏭️ [CoreS3 多媒体] 下一曲 Next")
+                        if sys.platform == "win32":
+                            import ctypes
+                            VK_MEDIA_NEXT_TRACK = 0xB0
+                            KEYEVENTF_KEYUP = 0x0002
+                            ctypes.windll.user32.keybd_event(VK_MEDIA_NEXT_TRACK, 0, 0, 0)
+                            time.sleep(0.02)
+                            ctypes.windll.user32.keybd_event(VK_MEDIA_NEXT_TRACK, 0, KEYEVENTF_KEYUP, 0)
+                        continue
+
+                    elif line == "CMD:prev_track":
+                        print("\n⏮️ [CoreS3 多媒体] 上一曲 Prev")
+                        if sys.platform == "win32":
+                            import ctypes
+                            VK_MEDIA_PREV_TRACK = 0xB1
+                            KEYEVENTF_KEYUP = 0x0002
+                            ctypes.windll.user32.keybd_event(VK_MEDIA_PREV_TRACK, 0, 0, 0)
+                            time.sleep(0.02)
+                            ctypes.windll.user32.keybd_event(VK_MEDIA_PREV_TRACK, 0, KEYEVENTF_KEYUP, 0)
+                        continue
+
+                    elif line == "CMD:screenshot":
+                        print("\n✂️ [CoreS3 快捷台] 一键截图")
+                        if sys.platform == "win32":
+                            import ctypes
+                            VK_LWIN = 0x5B
+                            VK_SHIFT = 0x10
+                            VK_S = 0x53
+                            KEYEVENTF_KEYUP = 0x0002
+                            ctypes.windll.user32.keybd_event(VK_LWIN, 0, 0, 0)
+                            ctypes.windll.user32.keybd_event(VK_SHIFT, 0, 0, 0)
+                            ctypes.windll.user32.keybd_event(VK_S, 0, 0, 0)
+                            time.sleep(0.04)
+                            ctypes.windll.user32.keybd_event(VK_S, 0, KEYEVENTF_KEYUP, 0)
+                            ctypes.windll.user32.keybd_event(VK_SHIFT, 0, KEYEVENTF_KEYUP, 0)
+                            ctypes.windll.user32.keybd_event(VK_LWIN, 0, KEYEVENTF_KEYUP, 0)
+                        continue
+
+                    elif line == "CMD:lock":
+                        print("\n🔒 [CoreS3 快捷台] 一键锁屏")
+                        if sys.platform == "win32":
+                            import ctypes
+                            ctypes.windll.user32.LockWorkStation()
+                        continue
+
+                    elif line == "CMD:desktop":
+                        print("\n🖥️ [CoreS3 快捷台] 显示桌面 Win+D")
+                        if sys.platform == "win32":
+                            import ctypes
+                            VK_LWIN = 0x5B
+                            VK_D = 0x44
+                            KEYEVENTF_KEYUP = 0x0002
+                            ctypes.windll.user32.keybd_event(VK_LWIN, 0, 0, 0)
+                            ctypes.windll.user32.keybd_event(VK_D, 0, 0, 0)
+                            time.sleep(0.04)
+                            ctypes.windll.user32.keybd_event(VK_D, 0, KEYEVENTF_KEYUP, 0)
+                            ctypes.windll.user32.keybd_event(VK_LWIN, 0, KEYEVENTF_KEYUP, 0)
+                        continue
+
+                    elif line == "CMD:switch_window":
+                        print("\n🔀 [CoreS3 快捷台] 切换窗口 Alt+Tab")
+                        if sys.platform == "win32":
+                            import ctypes
+                            VK_MENU = 0x12
+                            VK_TAB = 0x09
+                            KEYEVENTF_KEYUP = 0x0002
+                            ctypes.windll.user32.keybd_event(VK_MENU, 0, 0, 0)
+                            ctypes.windll.user32.keybd_event(VK_TAB, 0, 0, 0)
+                            time.sleep(0.04)
+                            ctypes.windll.user32.keybd_event(VK_TAB, 0, KEYEVENTF_KEYUP, 0)
+                            ctypes.windll.user32.keybd_event(VK_MENU, 0, KEYEVENTF_KEYUP, 0)
+                        continue
+
                     elif line == "VOICE_START":
                         is_recording = True
                         audio_buffer = bytearray()

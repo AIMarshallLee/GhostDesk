@@ -47,6 +47,17 @@ struct SystemState {
   int currentAudioVolume = 0;
 } state;
 
+// 多受控设备管理 (可通过语音指令或屏幕轻触切换)
+const char* TARGET_DEVICES[] = {
+  "💻 Win-工作站",
+  "🍎 MacBook Pro",
+  "💻 Win-笔记本",
+  "🍎 Mac mini"
+};
+const int TOTAL_DEVICES = 4;
+int currentDeviceIndex = 0;
+uint32_t touchHoldStartTime = 0;
+
 // 眼睛动画变量
 int eyeBlinkState = 0;
 uint32_t nextBlinkTime = 0;
@@ -219,11 +230,11 @@ void updateScreen() {
   }
 
   // ================= 模式二：AI 编程对讲机 / 监工模式 =================
-  // 1. 顶部状态栏
+  // 1. 顶部状态栏: 显示当前受控设备与电量
   M5.Display.fillRect(0, 0, 320, 28, 0x10A2);
   M5.Display.setTextSize(1);
   M5.Display.setTextColor(TFT_WHITE);
-  M5.Display.drawString("AI Walkie-Talkie • 对讲机", 10, 7);
+  M5.Display.drawString(String(TARGET_DEVICES[currentDeviceIndex]), 10, 7);
   int batteryLevel = M5.Power.getBatteryLevel();
   M5.Display.setTextColor(TFT_LIGHTGRAY);
   M5.Display.drawString(String(batteryLevel) + "%", 285, 7);
@@ -239,34 +250,21 @@ void updateScreen() {
     M5.Display.drawCenterString(state.buddyStatusMsg, 160, 148);
   }
 
-  // 3. 底部三段式触控底座 (手持大拇指盲操布局)
-  // [左键: ✅ APPROVE (y+Enter)]
-  M5.Display.fillRoundRect(8, 175, 88, 55, 8, 0x1C64);
-  M5.Display.drawRoundRect(8, 175, 88, 55, 8, TFT_GREEN);
+  // 3. 底部全宽大盲操底座 (彻底告别密集小按钮，长按即说，轻点即切)
+  int baseColor = state.isRecordingVoice ? TFT_RED : 0x2124; // 录音亮红 / 平常深科技灰
+  M5.Display.fillRoundRect(12, 175, 296, 55, 10, baseColor);
+  M5.Display.drawRoundRect(12, 175, 296, 55, 10, state.isRecordingVoice ? TFT_WHITE : 0x52AA);
   M5.Display.setTextColor(TFT_WHITE);
   M5.Display.setTextSize(1);
-  M5.Display.drawCenterString("APPROVE", 52, 185);
-  M5.Display.setTextSize(2);
-  M5.Display.drawCenterString("Y", 52, 202);
-
-  // [中键: 🎙️ 按住说话 (PTT 对讲机)]
-  int pttColor = state.isRecordingVoice ? TFT_RED : 0xD2C0; // 录音亮红 / 平常暖橙
-  M5.Display.fillRoundRect(102, 175, 116, 55, 8, pttColor);
-  M5.Display.drawRoundRect(102, 175, 116, 55, 8, TFT_WHITE);
-  M5.Display.setTextColor(TFT_WHITE);
-  M5.Display.setTextSize(1);
-  M5.Display.drawCenterString("PUSH TO TALK", 160, 185);
-  M5.Display.setTextSize(2);
-  M5.Display.drawCenterString("🎙️ 按住说", 160, 202);
-
-  // [右键: ❌ REJECT (Esc/Ctrl+C)]
-  M5.Display.fillRoundRect(224, 175, 88, 55, 8, 0x8000);
-  M5.Display.drawRoundRect(224, 175, 88, 55, 8, TFT_RED);
-  M5.Display.setTextColor(TFT_WHITE);
-  M5.Display.setTextSize(1);
-  M5.Display.drawCenterString("REJECT", 268, 185);
-  M5.Display.setTextSize(2);
-  M5.Display.drawCenterString("ESC", 268, 202);
+  if (state.isRecordingVoice) {
+    M5.Display.drawCenterString("RECORDING...", 160, 185);
+    M5.Display.setTextSize(2);
+    M5.Display.drawCenterString("松手发送指令", 160, 202);
+  } else {
+    M5.Display.drawCenterString("VOICE DESKTOP REMOTE", 160, 185);
+    M5.Display.setTextSize(2);
+    M5.Display.drawCenterString("🎙️ 长按说话 • 点按换机", 160, 202);
+  }
 
   M5.Display.setTextSize(1);
   M5.Display.endWrite();
@@ -375,6 +373,13 @@ void handleCommandLine(const String& line) {
       playTone(440, 300);
     } else if (subCmd == "idle") {
       setEmotion(EMOTION_IDLE, msg.length() ? msg : "Antigravity / Claude 待命", 0);
+    } else if (subCmd == "device") {
+      int idx = msg.toInt();
+      if (idx >= 0 && idx < TOTAL_DEVICES) {
+        currentDeviceIndex = idx;
+        playTone(1320, 60); delay(70); playTone(1760, 80);
+        setEmotion(EMOTION_HAPPY, String(TARGET_DEVICES[currentDeviceIndex]), 2500);
+      }
     }
     Serial.println("{\"ok\":true,\"buddy\":true}");
     updateScreen();
@@ -538,31 +543,26 @@ void loop() {
       updateScreen();
     }
   } else {
-    // 检查中间【🎙️ 按住说话】按钮区域 (X: 100 ~ 220, Y: 170 ~ 235)
-    bool touchingPTT = touch.isPressed() && (touch.x >= 95 && touch.x <= 225) && (touch.y >= 165 && touch.y <= 235);
-    
-    if (touchingPTT) {
-      if (!state.isRecordingVoice) {
+    // 告别边缘死区与小按键判定：全屏随手按住 (>100ms) 即刻进入录音！
+    if (touch.isPressed()) {
+      if (touchHoldStartTime == 0) {
+        touchHoldStartTime = now;
+      } else if (now - touchHoldStartTime > 100 && !state.isRecordingVoice) {
         startVoiceRecording();
       }
     } else {
       if (state.isRecordingVoice) {
         stopVoiceRecording();
+      } else if (touch.wasClicked()) {
+        // 轻按/短点按 (<100ms) 快速循环轮换受控设备
+        currentDeviceIndex = (currentDeviceIndex + 1) % TOTAL_DEVICES;
+        playTone(1320, 60); delay(70); playTone(1760, 80);
+        Serial.println("DEVICE:" + String(currentDeviceIndex) + ":" + String(TARGET_DEVICES[currentDeviceIndex]));
+        Serial.flush();
+        setEmotion(EMOTION_HAPPY, String(TARGET_DEVICES[currentDeviceIndex]), 2000);
+        updateScreen();
       }
-    }
-
-    // 左键和右键单击判定
-    if (touch.wasClicked()) {
-      if (touch.y >= 170 && touch.y <= 235) {
-        if (touch.x >= 8 && touch.x <= 95) {
-          doApprove();
-        } else if (touch.x >= 224 && touch.x <= 312) {
-          doReject();
-        }
-      } else if (touch.y < 160) {
-        setEmotion(EMOTION_HAPPY, "主人，随时按住中间按钮对我说话！", 2500);
-        playTone(1500, 80); delay(90); playTone(2000, 120);
-      }
+      touchHoldStartTime = 0;
     }
   }
 

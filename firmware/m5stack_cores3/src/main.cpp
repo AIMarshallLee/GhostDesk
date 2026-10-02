@@ -1,605 +1,975 @@
 #include <Arduino.h>
 #include <M5Unified.h>
-#include "USB.h"
-#include "USBHIDKeyboard.h"
-#include "USBHIDMouse.h"
+#include "BleCombo.h"
 
-// USB HID 设备实例
-USBHIDKeyboard Keyboard;
-USBHIDMouse Mouse;
-
-// 协议常量
+// 协议与固件常量
 #define PROTOCOL_VERSION 4
-#define FIRMWARE_VERSION "0.5.0"
-#define DEVICE_NAME "FlowDesk USB Bridge"
-#define BOARD_NAME "pico"
-#define LEASE_TIMEOUT_MS 10000
+#define FIRMWARE_VERSION "1.2.1"
+#define DEVICE_NAME "FlowDesk Remote"
+#define BOARD_NAME "m5stack-cores3"
 
-// 麦克风录音缓冲
-#define MIC_SAMPLE_RATE 16000
-#define MIC_CHUNK_SAMPLES 256
-static int16_t micBuffer[MIC_CHUNK_SAMPLES];
+// PSRAM 双缓冲画布 (320x240，零闪烁高帧率)
+static M5Canvas canvas(&M5.Display);
+
+// UI 风格枚举 (用户随时双击屏幕切换)
+enum UIStyle {
+  STYLE_APPLE_SIRI = 0,   // 苹果极简 Siri 灵动光晕风
+  STYLE_APPLE_PET = 1,    // 苹果 Memoji 灵动萌宠风
+  TOTAL_STYLES = 2
+};
+UIStyle currentStyle = STYLE_APPLE_SIRI;
+
+// 设备工作模式 (三大独立 Tab 选项卡)
+enum DeviceMode {
+  MODE_CORES3_MIC = 0,  // Tab 1: 云端语音 (CoreS3 硬件双麦 + 豆包 ASR)
+  MODE_BLE_REMOTE = 1,  // Tab 2: 电脑遥控 (右Alt 触发电脑输入法 + 回车)
+  MODE_PAGE_FLIP  = 2   // Tab 3: 翻页遥控 (PPT / 文档 上下翻页演讲遥控器)
+};
+DeviceMode currentMode = MODE_CORES3_MIC;
 
 // 运行状态
 enum BuddyEmotion {
-  EMOTION_IDLE,      // 待命眨眼
-  EMOTION_RECORDING, // 🎙️ 对讲机正在录音
-  EMOTION_THINKING,  // 思考中
-  EMOTION_HAPPY,     // 完成
-  EMOTION_WORRIED    // 报错
+  EMOTION_IDLE,
+  EMOTION_RECORDING,
+  EMOTION_THINKING,
+  EMOTION_HAPPY,
+  EMOTION_WORRIED
 };
 
 struct SystemState {
-  // GhostDesk 模式
-  bool armed = false;
-  String session = "";
-  uint32_t leaseExpireAt = 0;
-  String lastAction = "IDLE (Standby)";
-  uint32_t actionCount = 0;
-  bool emergencyStopped = false;
-
-  // 对讲机 / 搭子模式
   BuddyEmotion emotion = EMOTION_IDLE;
-  String buddyStatusMsg = "Antigravity / Claude 待命";
+  String statusMsg = "";
   uint32_t emotionUntil = 0;
   bool isRecordingVoice = false;
   uint32_t recordingStartTime = 0;
-  int currentAudioVolume = 0;
+  bool isBleVoiceActive = false;     // 模式2：输入法语音是否已开启
+  uint32_t bleVoiceStartTime = 0;    // 模式2：语音开启时间戳
+  uint32_t pendingReturnTime = 0;    // 延时回车计时器 (豆包 AI 整理转写专用延时)
+  uint8_t sentNoticeState = 0;       // 0=无, 1=成功(绿), 2=失败(红)
+  uint32_t sentNoticeUntil = 0;      // 提示框显示倒计时
+  uint32_t cmdEnterSentTime = 0;     // 发送指令时间戳
+  uint32_t btnCancelHighlightUntil = 0; // 取消按钮瞬时高亮时间戳
+  uint32_t btnSendHighlightUntil = 0;   // 发送按钮瞬时高亮时间戳
+  uint32_t btnPageUpHighlightUntil = 0; // 上一页按键瞬时高亮时间戳
+  uint32_t btnPageDownHighlightUntil = 0; // 下一页按键瞬时高亮时间戳
+  uint32_t lastUserActionTime = 0;      // 最后一次用户触控操作时间
+  bool isDimmed = false;                // 是否处于低功耗微暗屏状态
+  int brightness = 190;
+  volatile int liveVoiceLevel = 0; // 实时声学反馈 0~40
+  
+  // 触控手势跟踪
+  int touchStartX = 0;
+  int touchStartY = 0;
+  uint32_t lastTouchReleaseTime = 0;
+  bool swipeHandled = false;
+  bool wasTouching = false;
+
+  // 滑动提示浮窗
+  String toastMsg = "";
+  uint32_t toastUntil = 0;
+
+  // 电池电量非阻塞缓存 (避免频繁访问 I2C 锁死触控总线)
+  int cachedBattery = 100;
+  uint32_t lastBatteryCheck = 0;
 } state;
 
-// 眼睛动画变量
+// 萌宠动画变量
 int eyeBlinkState = 0;
 uint32_t nextBlinkTime = 0;
-int eyeLookOffset = 0;
+int eyeLookOffsetX = 0;
+int eyeLookOffsetY = 0;
 uint32_t nextLookTime = 0;
-
 String inputBuffer = "";
 
-void playTone(int freq, int durationMs) {
-  M5.Speaker.tone(freq, durationMs);
-}
-
-void releaseAllKeysAndMouse() {
-  Keyboard.releaseAll();
-  Mouse.release(MOUSE_LEFT | MOUSE_RIGHT | MOUSE_MIDDLE);
-}
-
-void disarm(const String& reason = "") {
-  state.armed = false;
-  state.session = "";
-  state.leaseExpireAt = 0;
-  releaseAllKeysAndMouse();
-  if (reason.length() > 0) state.lastAction = "DISARMED: " + reason;
-}
-
-uint32_t getLeaseMs() {
-  if (!state.armed) return 0;
-  int32_t remaining = state.leaseExpireAt - millis();
-  return remaining > 0 ? (uint32_t)remaining : 0;
-}
-
-void sendReply(uint32_t id, bool ok, const String& error = "") {
-  String json = "{";
-  json += "\"id\":" + String(id) + ",";
-  json += "\"ok\":" + String(ok ? "true" : "false") + ",";
-  json += "\"protocol\":" + String(PROTOCOL_VERSION) + ",";
-  json += "\"device\":\"" + String(DEVICE_NAME) + "\",";
-  json += "\"firmware\":\"" + String(FIRMWARE_VERSION) + "\",";
-  json += "\"board\":\"" + String(BOARD_NAME) + "\",";
-  json += "\"armed\":" + String(state.armed ? "true" : "false") + ",";
-  json += "\"session\":\"" + state.session + "\",";
-  json += "\"leaseMs\":" + String(getLeaseMs());
-  if (error.length() > 0) json += ",\"error\":\"" + error + "\"";
-  json += "}\n";
-
-  Serial.print(json);
-  Serial.flush();
-}
-
-// 绘制赛博眼睛
-void drawEyes(int centerX, int centerY, BuddyEmotion emotion, int blink) {
-  int eyeWidth = 44;
-  int eyeHeight = 52;
-  int eyeSpacing = 42;
-
-  int leftX = centerX - eyeSpacing - eyeWidth / 2 + eyeLookOffset;
-  int rightX = centerX + eyeSpacing - eyeWidth / 2 + eyeLookOffset;
-
-  uint16_t eyeColor = 0x07FF; // 科技青色
-  if (emotion == EMOTION_THINKING) eyeColor = 0xFBE0; // 金橙色
-  if (emotion == EMOTION_HAPPY)    eyeColor = 0x07E0; // 翠绿
-  if (emotion == EMOTION_WORRIED)  eyeColor = 0xF800; // 红色
-
-  if (emotion == EMOTION_HAPPY) {
-    M5.Display.fillRoundRect(leftX, centerY - 6, eyeWidth, 12, 6, eyeColor);
-    M5.Display.fillRoundRect(rightX, centerY - 6, eyeWidth, 12, 6, eyeColor);
-    M5.Display.fillCircle(leftX + eyeWidth / 2, centerY - 12, 13, eyeColor);
-    M5.Display.fillCircle(rightX + eyeWidth / 2, centerY - 12, 13, eyeColor);
-    M5.Display.fillCircle(leftX + eyeWidth / 2, centerY - 6, 12, TFT_BLACK);
-    M5.Display.fillCircle(rightX + eyeWidth / 2, centerY - 6, 12, TFT_BLACK);
-    return;
-  }
-
-  if (emotion == EMOTION_WORRIED) {
-    M5.Display.drawLine(leftX, centerY - 16, leftX + eyeWidth, centerY + 16, eyeColor);
-    M5.Display.drawLine(leftX, centerY + 16, leftX + eyeWidth, centerY - 16, eyeColor);
-    M5.Display.drawLine(rightX, centerY - 16, rightX + eyeWidth, centerY + 16, eyeColor);
-    M5.Display.drawLine(rightX, centerY + 16, rightX + eyeWidth, centerY - 16, eyeColor);
-    M5.Display.fillCircle(rightX + eyeWidth + 12, centerY - 16, 5, 0x051F);
-    return;
-  }
-
-  int currentH = eyeHeight;
-  if (blink == 1) currentH = 14;
-  if (blink == 2) currentH = 4;
-
-  int drawY = centerY - currentH / 2;
-  M5.Display.fillRoundRect(leftX, drawY, eyeWidth, currentH, 16, eyeColor);
-  M5.Display.fillRoundRect(rightX, drawY, eyeWidth, currentH, 16, eyeColor);
-
-  if (currentH > 22) {
-    M5.Display.fillCircle(leftX + eyeWidth - 12, drawY + 12, 5, TFT_WHITE);
-    M5.Display.fillCircle(rightX + eyeWidth - 12, drawY + 12, 5, TFT_WHITE);
-  }
-}
-
-// 绘制对讲机录音动态波形界面
-void drawVoiceRecordingScreen() {
-  M5.Display.fillRect(0, 28, 320, 142, TFT_BLACK);
-
-  // 麦克风图标与动画外圈
-  int pulseRadius = 26 + (state.currentAudioVolume / 4);
-  if (pulseRadius > 45) pulseRadius = 45;
-  M5.Display.drawCircle(160, 75, pulseRadius, 0xFD20); // 呼吸橙圈
-  M5.Display.fillCircle(160, 75, 22, TFT_RED);
-
-  // 绘制话筒小图标
-  M5.Display.fillRoundRect(156, 65, 8, 14, 4, TFT_WHITE);
-  M5.Display.drawFastHLine(154, 82, 12, TFT_WHITE);
-  M5.Display.drawFastVLine(160, 82, 6, TFT_WHITE);
-
-  // 录音动态波形柱状条
-  int bars = 11;
-  int startX = 65;
-  for (int i = 0; i < bars; ++i) {
-    int h = 6 + (state.currentAudioVolume / 3) * sin((i + 1) * 0.6);
-    if (h < 4) h = 4;
-    if (h > 40) h = 40;
-    M5.Display.fillRoundRect(startX + i * 18, 125 - h / 2, 8, h, 3, TFT_YELLOW);
-  }
-
-  // 提示文字
-  M5.Display.setTextColor(TFT_WHITE);
-  M5.Display.setTextSize(1);
-  uint32_t sec = (millis() - state.recordingStartTime) / 1000;
-  M5.Display.drawCenterString("🎙️ 正在倾听 (" + String(sec) + "s)... 松手发送给 AI", 160, 150);
-}
-
-// 刷新屏幕
-void updateScreen() {
-  M5.Display.startWrite();
-
-  // ================= 模式一：GhostDesk 物理防封控制模式 =================
-  if (state.armed) {
-    M5.Display.fillRect(0, 0, 320, 32, TFT_DARKGREEN);
-    M5.Display.setTextSize(1);
-    M5.Display.setTextColor(TFT_WHITE);
-    M5.Display.drawString("GhostDesk x M5 CoreS3", 10, 8);
-    M5.Display.setTextColor(TFT_GREENYELLOW);
-    M5.Display.drawString("[ ARMED / RUNNING ]", 170, 8);
-
-    M5.Display.fillRect(0, 32, 320, 140, TFT_BLACK);
-    M5.Display.setTextColor(TFT_LIGHTGRAY);
-    M5.Display.drawString("Session ID:", 15, 45);
-    M5.Display.setTextColor(TFT_CYAN);
-    M5.Display.drawString(state.session, 95, 45);
-
-    M5.Display.setTextColor(TFT_LIGHTGRAY);
-    M5.Display.drawString("Actions Done:", 15, 65);
-    M5.Display.setTextColor(TFT_WHITE);
-    M5.Display.drawString(String(state.actionCount), 110, 65);
-
-    M5.Display.drawRoundRect(10, 88, 300, 75, 6, TFT_NAVY);
-    M5.Display.fillRect(12, 90, 296, 71, 0x0821);
-    M5.Display.setTextColor(TFT_GOLD);
-    M5.Display.drawString("Last Action Executed:", 20, 96);
-    M5.Display.setTextColor(TFT_WHITE);
-    String displayAction = state.lastAction;
-    if (displayAction.length() > 34) displayAction = displayAction.substring(0, 31) + "...";
-    M5.Display.drawString(displayAction, 20, 116);
-
-    M5.Display.fillRoundRect(15, 180, 290, 50, 8, 0xB800);
-    M5.Display.drawRoundRect(15, 180, 290, 50, 8, TFT_WHITE);
-    M5.Display.setTextColor(TFT_WHITE);
-    M5.Display.setTextSize(2);
-    M5.Display.drawCenterString("STOP / 物理急停", 160, 195);
-    M5.Display.setTextSize(1);
-    M5.Display.endWrite();
-    return;
-  }
-
-  // ================= 模式二：AI 编程对讲机 / 监工模式 =================
-  // 1. 顶部状态栏
-  M5.Display.fillRect(0, 0, 320, 28, 0x10A2);
-  M5.Display.setTextSize(1);
-  M5.Display.setTextColor(TFT_WHITE);
-  M5.Display.drawString("AI Walkie-Talkie • 对讲机", 10, 7);
-  int batteryLevel = M5.Power.getBatteryLevel();
-  M5.Display.setTextColor(TFT_LIGHTGRAY);
-  M5.Display.drawString(String(batteryLevel) + "%", 285, 7);
-
-  // 2. 中间区域：录音状态 OR 赛博眼睛
-  if (state.isRecordingVoice) {
-    drawVoiceRecordingScreen();
-  } else {
-    M5.Display.fillRect(0, 28, 320, 142, TFT_BLACK);
-    drawEyes(160, 82, state.emotion, eyeBlinkState);
-    M5.Display.setTextSize(1);
-    M5.Display.setTextColor(state.emotion == EMOTION_HAPPY ? TFT_GREENYELLOW : (state.emotion == EMOTION_WORRIED ? TFT_RED : TFT_CYAN));
-    M5.Display.drawCenterString(state.buddyStatusMsg, 160, 148);
-  }
-
-  // 3. 底部三段式触控底座 (手持大拇指盲操布局)
-  // [左键: ✅ APPROVE (y+Enter)]
-  M5.Display.fillRoundRect(8, 175, 88, 55, 8, 0x1C64);
-  M5.Display.drawRoundRect(8, 175, 88, 55, 8, TFT_GREEN);
-  M5.Display.setTextColor(TFT_WHITE);
-  M5.Display.setTextSize(1);
-  M5.Display.drawCenterString("APPROVE", 52, 185);
-  M5.Display.setTextSize(2);
-  M5.Display.drawCenterString("Y", 52, 202);
-
-  // [中键: 🎙️ 按住说话 (PTT 对讲机)]
-  int pttColor = state.isRecordingVoice ? TFT_RED : 0xD2C0; // 录音亮红 / 平常暖橙
-  M5.Display.fillRoundRect(102, 175, 116, 55, 8, pttColor);
-  M5.Display.drawRoundRect(102, 175, 116, 55, 8, TFT_WHITE);
-  M5.Display.setTextColor(TFT_WHITE);
-  M5.Display.setTextSize(1);
-  M5.Display.drawCenterString("PUSH TO TALK", 160, 185);
-  M5.Display.setTextSize(2);
-  M5.Display.drawCenterString("🎙️ 按住说", 160, 202);
-
-  // [右键: ❌ REJECT (Esc/Ctrl+C)]
-  M5.Display.fillRoundRect(224, 175, 88, 55, 8, 0x8000);
-  M5.Display.drawRoundRect(224, 175, 88, 55, 8, TFT_RED);
-  M5.Display.setTextColor(TFT_WHITE);
-  M5.Display.setTextSize(1);
-  M5.Display.drawCenterString("REJECT", 268, 185);
-  M5.Display.setTextSize(2);
-  M5.Display.drawCenterString("ESC", 268, 202);
-
-  M5.Display.setTextSize(1);
-  M5.Display.endWrite();
+void showToast(const String& msg, uint32_t durationMs = 1500) {
+  state.toastMsg = msg;
+  state.toastUntil = millis() + durationMs;
 }
 
 void setEmotion(BuddyEmotion emo, const String& msg, uint32_t durationMs = 3000) {
   state.emotion = emo;
-  state.buddyStatusMsg = msg;
-  state.emotionUntil = millis() + durationMs;
+  state.statusMsg = msg;
+  state.emotionUntil = (durationMs > 0) ? millis() + durationMs : 0;
 }
 
-void doApprove() {
-  Keyboard.write('y');
-  delay(15);
-  Keyboard.write(KEY_RETURN);
-  setEmotion(EMOTION_HAPPY, "Approved! 顺利放行 (y + Enter)", 3500);
-  playTone(1046, 80); delay(90); playTone(1318, 120);
+// ==========================================
+// 风格 1：Apple 极简水波涟漪 (根据实时声波动态跳动)
+// ==========================================
+static float rippleR[3] = {16.0f, 42.0f, 68.0f};
+
+void drawAppleWaterRipples(int cx, int cy, uint32_t now) {
+  bool isActive = state.isRecordingVoice || state.isBleVoiceActive;
+  if (isActive) {
+    int voiceBoost = state.liveVoiceLevel;
+    if (voiceBoost > 35) voiceBoost = 35;
+    if (state.isBleVoiceActive && voiceBoost < 14) voiceBoost = 14;
+
+    // 1. 录音状态：极光天青动态纯净水波，随说话音量向外律动扩散
+    for (int i = 0; i < 3; ++i) {
+      rippleR[i] += 1.8f + (voiceBoost * 0.12f);
+      if (rippleR[i] > 92.0f) rippleR[i] = 16.0f;
+
+      float r = rippleR[i];
+      float fade = (92.0f - r) / (92.0f - 16.0f);
+      uint16_t rippleColor = (fade > 0.60f) ? 0x07FF : ((fade > 0.30f) ? 0x04DF : 0x0256);
+
+      canvas.drawCircle(cx, cy, (int)r, rippleColor);
+      if (r > 26.0f) {
+        canvas.drawCircle(cx, cy, (int)r + 1, rippleColor);
+      }
+    }
+
+    // 中央晶莹水滴：呼吸脉动 + 随说话声音真实物理震颤！
+    int coreR = 15 + (voiceBoost / 2);
+    int pulse = (int)(sin(now * 0.018f) * 4.0f + 4.0f);
+    coreR += pulse;
+
+    canvas.fillCircle(cx, cy, coreR + 5, 0x0317);
+    canvas.fillCircle(cx, cy, coreR + 2, 0x05BF);
+    canvas.fillCircle(cx, cy, coreR, 0x07FF);
+    canvas.fillCircle(cx, cy, coreR - 6, TFT_WHITE);
+  } else if (state.pendingReturnTime > 0) {
+    // 3. 倒计时状态：静美暖金色水滴 + 倒计时文字
+    uint32_t remainMs = (state.pendingReturnTime > now) ? (state.pendingReturnTime - now) : 0;
+    float remainSec = (float)remainMs / 1000.0f;
+
+    canvas.drawCircle(cx, cy, 34, 0x62A0);
+    canvas.drawCircle(cx, cy, 66, 0x3180);
+
+    int coreR = 15;
+    canvas.fillCircle(cx, cy, coreR + 4, 0x4200);
+    canvas.fillCircle(cx, cy, coreR, 0xFD20);
+    canvas.fillCircle(cx, cy, coreR - 5, TFT_WHITE);
+
+    // 水滴下方精致文字
+    canvas.setTextColor(0xFD20);
+    canvas.drawCenterString("倒计时 " + String(remainSec, 1) + "s 自动发送", cx, cy + 38);
+  } else {
+    // 2. 待命/停止状态：完全平静的镜面湖水水滴 (用户赞赏的优美水纹)
+    canvas.drawCircle(cx, cy, 34, 0x0256);
+    canvas.drawCircle(cx, cy, 66, 0x018F);
+
+    int coreR = 15;
+    canvas.fillCircle(cx, cy, coreR + 4, 0x01EF);
+    canvas.fillCircle(cx, cy, coreR, 0x04DF);
+    canvas.fillCircle(cx, cy, coreR - 5, 0xDEFF);
+  }
 }
 
-void doReject() {
-  Keyboard.write(KEY_ESC);
-  delay(10);
-  Keyboard.press(KEY_LEFT_CTRL); Keyboard.press('c'); delay(15); Keyboard.releaseAll();
-  setEmotion(EMOTION_WORRIED, "Rejected! 已中断 (Esc/Ctrl+C)", 3500);
-  playTone(392, 150); delay(160); playTone(261, 200);
+// ==========================================
+// 经典黑白麦克风 + 向外发放射频声波 (极简、灵动、高对比度，统一云端与遥控)
+// ==========================================
+static float micWaveR[3] = {32.0f, 52.0f, 72.0f};
+
+void drawClassicMicrophone(int cx, int cy, uint32_t now) {
+  // cy 约为 110 (上方 Tab 高 54，下方按钮在 155 之后，中心点在 110-112)
+  bool isActive = (currentMode == MODE_CORES3_MIC) ? state.isRecordingVoice : state.isBleVoiceActive;
+
+  // 1. 如果正在语音输入，绘制向外辐射扩散的声波弧线 ((( 🎙️ )))
+  if (isActive) {
+    for (int i = 0; i < 3; ++i) {
+      micWaveR[i] += 1.8f;
+      if (micWaveR[i] > 84.0f) micWaveR[i] = 30.0f;
+
+      float r = micWaveR[i];
+      // 计算左右声波弧线 (平滑向外扩散)
+      uint16_t waveColor = TFT_WHITE;
+      if (r > 68.0f) waveColor = 0x9CD3; // 边缘轻微淡出灰白
+      else if (r > 50.0f) waveColor = 0xC618;
+
+      canvas.drawArc(cx, cy, (int)r, (int)r - 2, 135, 225, waveColor);
+      canvas.drawArc(cx, cy, (int)r, (int)r - 2, 315, 45, waveColor);
+    }
+  }
+
+  // 2. 绘制麦克风核心主体 (经典复古胶囊广播麦)
+  int micW = 26;
+  int micH = 38;
+  int micY = cy - 20;
+
+  // 麦克风胶囊外壳 (纯白)
+  canvas.fillRoundRect(cx - micW / 2, micY, micW, micH, 13, TFT_WHITE);
+
+  // 麦克风顶部进音孔网格 (纯黑水平条纹)
+  int grillStartY = micY + 6;
+  for (int g = 0; g < 4; ++g) {
+    canvas.drawFastHLine(cx - 8, grillStartY + g * 5, 17, TFT_BLACK);
+  }
+
+  // 胶囊中间金属腰线 (纯黑)
+  canvas.drawFastHLine(cx - 11, micY + 23, 23, TFT_BLACK);
+
+  // 3. 麦克风 U 型环绕支架与底座 (纯白线条)
+  // U 型托架：围绕麦克风下方
+  canvas.drawArc(cx, micY + 22, 20, 18, 90, 270, TFT_WHITE);
+
+  // 垂直支柱
+  canvas.fillRect(cx - 2, micY + 42, 5, 12, TFT_WHITE);
+
+  // 稳固底座横条
+  canvas.fillRoundRect(cx - 18, micY + 54, 37, 4, 2, TFT_WHITE);
+
+  // 4. 下方状态文字提示
+  canvas.setTextSize(1);
+  if (isActive) {
+    canvas.setTextColor(TFT_WHITE);
+    if (currentMode == MODE_CORES3_MIC) {
+      uint32_t sec = (now - state.recordingStartTime) / 1000;
+      canvas.drawCenterString("云端录音中 " + String(sec) + "s", cx, cy + 38);
+    } else {
+      canvas.drawCenterString("正在录音 - 点击停止", cx, cy + 38);
+    }
+  } else if (state.pendingReturnTime > 0) {
+    uint32_t remainMs = (state.pendingReturnTime > now) ? (state.pendingReturnTime - now) : 0;
+    float remainSec = (float)remainMs / 1000.0f;
+    canvas.setTextColor(0xFFE0); // 暖金倒计时提示
+    canvas.drawCenterString("整理中 " + String(remainSec, 1) + "s - 点击发送", cx, cy + 38);
+  } else {
+    canvas.setTextColor(0x9CD3); // 柔和灰白
+    if (currentMode == MODE_CORES3_MIC) {
+      canvas.drawCenterString("轻触中间开启云端识别", cx, cy + 38);
+    } else {
+      canvas.drawCenterString("轻触中间开启输入", cx, cy + 38);
+    }
+  }
 }
 
-// 开始录音
+// ==========================================
+// 风格 2：Apple Memoji 灵动卡哇伊萌宠
+// ==========================================
+void drawAppleCutePet(int cx, int cy, BuddyEmotion emotion, int blink) {
+  int eyeW = 44;
+  int eyeH = 52;
+  int spacing = 46;
+
+  int leftX = cx - spacing - eyeW / 2 + eyeLookOffsetX;
+  int rightX = cx + spacing - eyeW / 2 + eyeLookOffsetX;
+  int curY = cy + eyeLookOffsetY;
+
+  uint16_t eyeColor = 0x07FF; // 科技明青
+  if (emotion == EMOTION_THINKING) eyeColor = 0xFDE0; // 暖金
+  if (emotion == EMOTION_HAPPY)    eyeColor = 0x07E0; // 翠绿
+  if (emotion == EMOTION_WORRIED)  eyeColor = 0xF880; // 警戒红
+
+  if (emotion == EMOTION_HAPPY) {
+    canvas.fillRoundRect(leftX, curY - 6, eyeW, 14, 7, eyeColor);
+    canvas.fillRoundRect(rightX, curY - 6, eyeW, 14, 7, eyeColor);
+    canvas.fillCircle(leftX + eyeW / 2, curY - 14, 15, eyeColor);
+    canvas.fillCircle(rightX + eyeW / 2, curY - 14, 15, eyeColor);
+    canvas.fillCircle(leftX + eyeW / 2, curY - 7, 14, TFT_BLACK);
+    canvas.fillCircle(rightX + eyeW / 2, curY - 7, 14, TFT_BLACK);
+    return;
+  }
+
+  int currentH = eyeH;
+  if (blink == 1) currentH = 14;
+  if (blink == 2) currentH = 4;
+
+  int drawY = curY - currentH / 2;
+  canvas.fillRoundRect(leftX, drawY, eyeW, currentH, 16, eyeColor);
+  canvas.fillRoundRect(rightX, drawY, eyeW, currentH, 16, eyeColor);
+
+  if (currentH > 24) {
+    canvas.fillCircle(leftX + eyeW - 13, drawY + 13, 6, TFT_WHITE);
+    canvas.fillCircle(rightX + eyeW - 13, drawY + 13, 6, TFT_WHITE);
+    canvas.fillCircle(leftX + 14, drawY + currentH - 14, 3, TFT_WHITE);
+    canvas.fillCircle(rightX + 14, drawY + currentH - 14, 3, TFT_WHITE);
+  }
+}
+
+// ==========================================
+// ==========================================
+// ==========================================
+// 顶栏：满屏超大三大选项卡 Tab [🎙️ 云端] [⌨️ 遥控] [📑 翻页] + 苹果风竖直微电量柱
+// ==========================================
+void drawDynamicIsland() {
+  // Tab 1: 云端语音 (X: 4 ~ 98, 宽 94, 高 40)
+  if (currentMode == MODE_CORES3_MIC) {
+    canvas.fillRoundRect(4, 5, 94, 40, 8, 0x0317);
+    canvas.drawRoundRect(4, 5, 94, 40, 8, 0x07FF);
+    canvas.setTextColor(TFT_WHITE);
+  } else {
+    canvas.fillRoundRect(4, 5, 94, 40, 8, 0x18C3);
+    canvas.drawRoundRect(4, 5, 94, 40, 8, 0x3186);
+    canvas.setTextColor(0x7BEF);
+  }
+  canvas.setTextSize(1);
+  canvas.drawCenterString("云端", 51, 18);
+
+  // Tab 2: 电脑遥控 (X: 102 ~ 196, 宽 94, 高 40)
+  if (currentMode == MODE_BLE_REMOTE) {
+    canvas.fillRoundRect(102, 5, 94, 40, 8, 0x39C0);
+    canvas.drawRoundRect(102, 5, 94, 40, 8, 0xFFE0);
+    canvas.setTextColor(TFT_WHITE);
+  } else {
+    canvas.fillRoundRect(102, 5, 94, 40, 8, 0x18C3);
+    canvas.drawRoundRect(102, 5, 94, 40, 8, 0x3186);
+    canvas.setTextColor(0x7BEF);
+  }
+  canvas.setTextSize(1);
+  canvas.drawCenterString("遥控", 149, 18);
+
+  // Tab 3: 翻页演讲 (X: 200 ~ 296, 宽 96, 高 40)
+  if (currentMode == MODE_PAGE_FLIP) {
+    canvas.fillRoundRect(200, 5, 96, 40, 8, 0x0320);
+    canvas.drawRoundRect(200, 5, 96, 40, 8, 0x07E0);
+    canvas.setTextColor(TFT_WHITE);
+  } else {
+    canvas.fillRoundRect(200, 5, 96, 40, 8, 0x18C3);
+    canvas.drawRoundRect(200, 5, 96, 40, 8, 0x3186);
+    canvas.setTextColor(0x7BEF);
+  }
+  canvas.setTextSize(1);
+  canvas.drawCenterString("翻页", 248, 18);
+
+  // 右侧边缘：苹果风竖直微电量柱 (X: 305 ~ 316, 宽 11, 高 38)
+  int bat = state.cachedBattery;
+  if (bat < 0) bat = 0;
+  if (bat > 100) bat = 100;
+  int fillH = (bat * 30) / 100;
+  if (fillH < 2 && bat > 0) fillH = 2;
+
+  uint16_t batColor = 0x07E0; // >= 80% 纯正绿色
+  if (bat < 40) {
+    batColor = 0xF800;        // < 40% 红色预警
+  } else if (bat < 80) {
+    batColor = 0xFFE0;        // 40% ~ 79% 苹果标准暖黄
+  }
+  if (M5.Power.isCharging()) batColor = 0x07E0;
+
+  // 电池正极小凸起
+  canvas.fillRect(308, 5, 5, 2, 0x52AA);
+  // 电池外壳
+  canvas.drawRoundRect(305, 7, 11, 36, 3, 0x52AA);
+  // 内部电量柱 (由底往上填充)
+  if (fillH > 0) {
+    canvas.fillRect(307, 40 - fillH, 7, fillH, batColor);
+  }
+
+  // 蓝牙状态极简微指示点 (X: 299, Y: 24, 直径 4px 微点，电池左侧紧密陪伴)
+  bool bleConnected = BleCombo.isConnected();
+  if (bleConnected) {
+    canvas.fillCircle(299, 24, 2, 0x07FF); // 已连接：稳定常亮纯净科技青
+  } else {
+    // 未连接：微弱柔和呼吸闪烁 (周期 1000ms)
+    uint32_t phase = millis() % 1000;
+    if (phase < 500) {
+      canvas.fillCircle(299, 24, 2, 0x0256); // 柔和深蓝
+    }
+  }
+}
+
+// ==========================================
+// 底栏：极简状态与功能按钮
+// ==========================================
+void drawBottomActionBar() {
+  uint32_t now = millis();
+
+  // 1. 左侧发送成功/失败指示框 (严谨机制：仅在 PC 回执确切送达时提示，绝无虚假提示)
+  if (now < state.sentNoticeUntil) {
+    if (state.sentNoticeState == 1) {
+      // 成功：翠绿长方形「✓ 已发送」
+      canvas.fillRoundRect(12, 178, 102, 50, 10, 0x0320); // 墨绿色卡片背景
+      canvas.drawRoundRect(12, 178, 102, 50, 10, 0x07E0); // 翠绿醒目边框
+      canvas.setTextColor(0x07E0);
+      canvas.setTextSize(1);
+      canvas.drawCenterString("✓ 已发送", 63, 195);
+    } else if (state.sentNoticeState == 2) {
+      // 失败：朱红长方形「✕ 未发送」
+      canvas.fillRoundRect(12, 178, 102, 50, 10, 0x4000); // 暗红底
+      canvas.drawRoundRect(12, 178, 102, 50, 10, 0xF800); // 亮红边框
+      canvas.setTextColor(0xF800);
+      canvas.setTextSize(1);
+      canvas.drawCenterString("✕ 未发送", 63, 195);
+    }
+  }
+
+  // 2. 模式专属底栏 (常态为极简纯粹的高级深灰，与未选中的顶栏一致；点击瞬间高亮变色反馈！)
+  bool isCancelPressed = (now < state.btnCancelHighlightUntil);
+  bool isSendPressed   = (now < state.btnSendHighlightUntil);
+
+  // 取消按键颜色：平时高级暗灰 0x18C3 + 灰边 0x3186；点击瞬间高亮暖红 0x3800 + 亮红框 0xF980
+  uint16_t cancelBgColor   = isCancelPressed ? 0x3800 : 0x18C3;
+  uint16_t cancelBorderColor = isCancelPressed ? 0xF980 : 0x3186;
+  uint16_t cancelTextColor = isCancelPressed ? TFT_WHITE : 0x7BEF;
+
+  // 发送按键颜色：平时高级暗灰 0x18C3 + 灰边 0x3186；点击瞬间高亮翠绿 0x0320 + 亮绿框 0x07E0
+  uint16_t sendBgColor     = isSendPressed ? 0x0320 : 0x18C3;
+  uint16_t sendBorderColor = isSendPressed ? 0x07E0 : 0x3186;
+  uint16_t sendTextColor   = isSendPressed ? TFT_WHITE : 0x7BEF;
+
+  if (currentMode == MODE_CORES3_MIC) {
+    // ── Tab 1: 云端语音底栏 ──
+    // 左下角：【取消】按钮 (与上方「云端」完全对齐：X: 4, Y: 195, 宽 94, 高 40)
+    canvas.fillRoundRect(4, 195, 94, 40, 8, cancelBgColor);
+    canvas.drawRoundRect(4, 195, 94, 40, 8, cancelBorderColor);
+    canvas.setTextColor(cancelTextColor);
+    canvas.setTextSize(1);
+    canvas.drawCenterString("取消", 51, 208);
+
+    // 右下角：【完成】发送按钮 (与上方「翻页」完全对齐：X: 200, Y: 195, 宽 96, 高 40)
+    canvas.fillRoundRect(200, 195, 96, 40, 8, sendBgColor);
+    canvas.drawRoundRect(200, 195, 96, 40, 8, sendBorderColor);
+    canvas.setTextColor(sendTextColor);
+    canvas.setTextSize(1);
+    if (state.isRecordingVoice) {
+      uint32_t sec = (millis() - state.recordingStartTime) / 1000;
+      canvas.drawCenterString("完成 " + String(sec) + "s", 248, 208);
+    } else {
+      canvas.drawCenterString("完成", 248, 208);
+    }
+  } else if (currentMode == MODE_BLE_REMOTE) {
+    // ── Tab 2: 电脑遥控模式底栏 ──
+    // 左下角：【取消】按钮 (与上方「云端」完全对齐：X: 4, Y: 195, 宽 94, 高 40)
+    canvas.fillRoundRect(4, 195, 94, 40, 8, cancelBgColor);
+    canvas.drawRoundRect(4, 195, 94, 40, 8, cancelBorderColor);
+    canvas.setTextColor(cancelTextColor);
+    canvas.setTextSize(1);
+    canvas.drawCenterString("取消", 51, 208);
+
+    // 右下角：【发送】按钮 (与上方「翻页」完全对齐：X: 200, Y: 195, 宽 96, 高 40)
+    canvas.fillRoundRect(200, 195, 96, 40, 8, sendBgColor);
+    canvas.drawRoundRect(200, 195, 96, 40, 8, sendBorderColor);
+    canvas.setTextColor(sendTextColor);
+    canvas.setTextSize(1);
+    canvas.drawCenterString("发送", 248, 208);
+  }
+}
+
+// 刷新整屏 (通过 PSRAM 双缓冲渲染)
+void renderScreen() {
+  uint32_t now = millis();
+  canvas.fillScreen(TFT_BLACK);
+
+  // 1. 顶栏选项卡 Tab
+  drawDynamicIsland();
+
+  // 2. 中央视觉主体
+  if (currentMode == MODE_PAGE_FLIP) {
+    // ── Tab 3: 翻页遥控模式 (两个巨大半屏轻触按键，演讲/PPT/文档秒翻) ──
+    bool isPageUpPressed   = (now < state.btnPageUpHighlightUntil);
+    bool isPageDownPressed = (now < state.btnPageDownHighlightUntil);
+
+    uint16_t upBgColor     = isPageUpPressed ? 0x0270 : 0x18C3;
+    uint16_t upBorderColor = isPageUpPressed ? 0x07FF : 0x3186;
+    uint16_t upTextColor   = isPageUpPressed ? TFT_WHITE : 0x07FF;
+
+    uint16_t downBgColor     = isPageDownPressed ? 0x0320 : 0x18C3;
+    uint16_t downBorderColor = isPageDownPressed ? 0x07E0 : 0x3186;
+    uint16_t downTextColor   = isPageDownPressed ? TFT_WHITE : 0x07E0;
+
+    // 左半边：上一页 Page Up (X: 12 ~ 154, Y: 56 ~ 228)
+    canvas.fillRoundRect(12, 56, 142, 172, 14, upBgColor);
+    canvas.drawRoundRect(12, 56, 142, 172, 14, upBorderColor);
+    canvas.setTextColor(upTextColor);
+    canvas.setTextSize(2);
+    canvas.drawCenterString("▲", 83, 110);
+    canvas.setTextSize(1);
+    canvas.drawCenterString("上一页", 83, 145);
+
+    // 右半边：下一页 Page Down (X: 166 ~ 308, Y: 56 ~ 228)
+    canvas.fillRoundRect(166, 56, 142, 172, 14, downBgColor);
+    canvas.drawRoundRect(166, 56, 142, 172, 14, downBorderColor);
+    canvas.setTextColor(downTextColor);
+    canvas.setTextSize(2);
+    canvas.drawCenterString("▼", 237, 110);
+    canvas.setTextSize(1);
+    canvas.drawCenterString("下一页", 237, 145);
+  } else if (currentMode == MODE_BLE_REMOTE || currentMode == MODE_CORES3_MIC) {
+    // ── Tab 1 & Tab 2: 经典黑白麦克风 + 声波辐射扩散 (统一极简、高对比度黑白声波) ──
+    drawClassicMicrophone(160, 110, now);
+  } else {
+    drawAppleCutePet(160, 130, state.emotion, eyeBlinkState);
+  }
+
+  // 3. 底栏 (发送按钮 / 已发送提示 / 录音进度)
+  drawBottomActionBar();
+
+  // 4. 浮层 Toast (如长按广播配对提示)
+  if (now < state.toastUntil && state.toastMsg.length() > 0) {
+    int tw = canvas.textWidth(state.toastMsg) + 24;
+    int tx = (320 - tw) / 2;
+    canvas.fillRoundRect(tx, 96, tw, 36, 18, 0x18C3);
+    canvas.drawRoundRect(tx, 96, tw, 36, 18, 0x07FF);
+    canvas.setTextColor(0x07FF);
+    canvas.setTextSize(1);
+    canvas.drawCenterString(state.toastMsg, 160, 108);
+  }
+
+  // DMA 高速推入屏幕
+  canvas.pushSprite(0, 0);
+}
+
+// ==========================================
+// 录音流式传输任务 (FreeRTOS 独立运行在 Core 0，绝对不抢占 Core 1 的 UI 与触控)
+// ==========================================
+static TaskHandle_t audioTaskHandle = NULL;
+static volatile bool isAudioStreaming = false;
+
+void audioStreamTask(void* parameter) {
+  static const size_t SAMPLES_PER_CHUNK = 128; // 128 采样点 = 8ms @ 16kHz
+  static int16_t pcmBuffer[SAMPLES_PER_CHUNK];
+  static const char hexChars[] = "0123456789abcdef";
+  // "V:" + 128 samples * 2 bytes * 2 hex chars + "\n" + '\0' = 516 字节
+  static char hexChunk[2 + SAMPLES_PER_CHUNK * 2 * 2 + 2];
+  hexChunk[0] = 'V';
+  hexChunk[1] = ':';
+
+  while (true) {
+    if (isAudioStreaming && M5.Mic.isEnabled()) {
+      if (M5.Mic.record(pcmBuffer, SAMPLES_PER_CHUNK, 16000, false)) {
+        while (isAudioStreaming && M5.Mic.isRecording()) {
+          vTaskDelay(1 / portTICK_PERIOD_MS);
+        }
+        if (isAudioStreaming) {
+          int maxAmp = 0;
+          for (size_t i = 0; i < SAMPLES_PER_CHUNK; ++i) {
+            int a = abs(pcmBuffer[i]);
+            if (a > maxAmp) maxAmp = a;
+          }
+          state.liveVoiceLevel = maxAmp / 500;
+
+          const uint8_t* rawBytes = (const uint8_t*)pcmBuffer;
+          size_t outIdx = 2;
+          for (size_t i = 0; i < SAMPLES_PER_CHUNK * 2; ++i) {
+            uint8_t b = rawBytes[i];
+            hexChunk[outIdx++] = hexChars[b >> 4];
+            hexChunk[outIdx++] = hexChars[b & 0x0F];
+          }
+          hexChunk[outIdx++] = '\n';
+          if (Serial) {
+            Serial.write((const uint8_t*)hexChunk, outIdx);
+          }
+        }
+      } else {
+        vTaskDelay(2 / portTICK_PERIOD_MS);
+      }
+    } else {
+      vTaskDelay(15 / portTICK_PERIOD_MS);
+    }
+  }
+}
+
 void startVoiceRecording() {
   if (state.isRecordingVoice) return;
   state.isRecordingVoice = true;
   state.recordingStartTime = millis();
   state.emotion = EMOTION_RECORDING;
-  playTone(1320, 60); delay(70); playTone(1760, 80); // 对讲机开麦清脆滴声
+  state.statusMsg = "正在倾听 • 再次轻触发送";
+
   Serial.println("VOICE_START");
-  Serial.flush();
+  isAudioStreaming = true;
 }
 
-// 结束录音
 void stopVoiceRecording() {
   if (!state.isRecordingVoice) return;
   state.isRecordingVoice = false;
-  playTone(880, 80); // 对讲机闭麦提示音
+  isAudioStreaming = false;
+
+  setEmotion(EMOTION_THINKING, "豆包大模型识别中...", 6000);
   Serial.println("VOICE_END");
-  Serial.flush();
-  setEmotion(EMOTION_THINKING, "语音已发送，AI 正在生成...", 8000);
 }
 
-// 采样麦克风并推送给串口
-void processMicrophone() {
+void cancelVoiceRecording() {
   if (!state.isRecordingVoice) return;
+  state.isRecordingVoice = false;
+  isAudioStreaming = false;
 
-  if (M5.Mic.record(micBuffer, MIC_CHUNK_SAMPLES, MIC_SAMPLE_RATE)) {
-    // 计算瞬时 RMS 音量
-    int32_t sum = 0;
-    for (int i = 0; i < MIC_CHUNK_SAMPLES; ++i) {
-      int16_t sample = micBuffer[i];
-      sum += (int32_t)abs(sample);
-    }
-    state.currentAudioVolume = (int)(sum / MIC_CHUNK_SAMPLES / 200);
-    if (state.currentAudioVolume > 80) state.currentAudioVolume = 80;
+  setEmotion(EMOTION_IDLE, "已取消", 1500);
+  Serial.println("VOICE_CANCEL");
+}
 
-    // 发送十六进制音频块给宿主机 (CDC 协议传输，保持 Little-Endian 与标准 WAV 对齐)
-    Serial.print("V:");
-    const uint8_t* rawBytes = (const uint8_t*)micBuffer;
-    size_t byteCount = MIC_CHUNK_SAMPLES * sizeof(int16_t);
-    for (size_t i = 0; i < byteCount; ++i) {
-      uint8_t b = rawBytes[i];
-      if (b < 0x10) Serial.print('0');
-      Serial.print(b, HEX);
+// 处理滑动手势 (快捷切换常用编程工具)
+void handleSwipe(int dx, int dy) {
+  String targetApp = "";
+  if (abs(dx) > abs(dy)) {
+    if (dx > 35) {
+      targetApp = "terminal";
+      showToast("➡️ 切换: 终端 Terminal", 1600);
+    } else if (dx < -35) {
+      targetApp = "vscode";
+      showToast("⬅️ 切换: VS Code", 1600);
     }
-    Serial.println();
+  } else {
+    if (dy < -30) {
+      targetApp = "antigravity";
+      showToast("⬆️ 切换: 反重力 Antigravity", 1600);
+    } else if (dy > 30) {
+      targetApp = "claude";
+      showToast("⬇️ 切换: Claude Desktop", 1600);
+    }
+  }
+
+  if (targetApp.length() > 0) {
+    Serial.println("CMD:switch:" + targetApp);
+    setEmotion(EMOTION_HAPPY, "应用已切换: " + targetApp, 2000);
   }
 }
 
-// 命令解析
+// 串口指令接收
 void handleCommandLine(const String& line) {
   if (line.length() == 0) return;
 
-  std::vector<String> tokens;
-  int start = 0;
-  while (start < line.length()) {
-    int tabIndex = line.indexOf('\t', start);
-    if (tabIndex == -1) {
-      tokens.push_back(line.substring(start));
-      break;
-    }
-    tokens.push_back(line.substring(start, tabIndex));
-    start = tabIndex + 1;
+  if (line == "NOTICE:SENT") {
+    state.sentNoticeUntil = millis() + 1800;
+    renderScreen();
+    return;
   }
 
-  if (tokens.empty()) return;
+  if (line == "NOTICE:SENT") {
+    state.sentNoticeState = 1; // 1 = 成功(绿)
+    state.sentNoticeUntil = millis() + 1800;
+    renderScreen();
+    return;
+  }
 
-  if (tokens[0] == "buddy") {
-    String subCmd = tokens.size() > 1 ? tokens[1] : "idle";
-    String msg = tokens.size() > 2 ? tokens[2] : "";
+  if (line == "NOTICE:FAIL") {
+    state.sentNoticeState = 2; // 2 = 失败(红)
+    state.sentNoticeUntil = millis() + 1800;
+    renderScreen();
+    return;
+  }
+
+  if (line.startsWith("buddy\t")) {
+    int idx1 = line.indexOf('\t');
+    int idx2 = line.indexOf('\t', idx1 + 1);
+    String subCmd = (idx2 != -1) ? line.substring(idx1 + 1, idx2) : line.substring(idx1 + 1);
+    String msg = (idx2 != -1) ? line.substring(idx2 + 1) : "";
 
     if (subCmd == "thinking") {
       setEmotion(EMOTION_THINKING, msg.length() ? msg : "AI 正在思考中...", 10000);
-      playTone(880, 50);
     } else if (subCmd == "done" || subCmd == "success") {
-      setEmotion(EMOTION_HAPPY, msg.length() ? msg : "任务完成！", 6000);
-      playTone(1318, 100); delay(110); playTone(1760, 180);
+      setEmotion(EMOTION_HAPPY, msg.length() ? msg : "任务完成！", 5000);
+      state.sentNoticeState = 1;
+      state.sentNoticeUntil = millis() + 1800; // 同步点亮「已发送」提示
     } else if (subCmd == "error" || subCmd == "fail") {
-      setEmotion(EMOTION_WORRIED, msg.length() ? msg : "单测失败 / 遇到报错", 6000);
-      playTone(440, 300);
+      setEmotion(EMOTION_WORRIED, msg.length() ? msg : "遇到报错", 5000);
+      state.sentNoticeState = 2;
+      state.sentNoticeUntil = millis() + 1800;
     } else if (subCmd == "idle") {
-      setEmotion(EMOTION_IDLE, msg.length() ? msg : "Antigravity / Claude 待命", 0);
+      setEmotion(EMOTION_IDLE, "", 0);
     }
     Serial.println("{\"ok\":true,\"buddy\":true}");
-    updateScreen();
-    return;
   }
-
-  uint32_t id = tokens[0].toInt();
-  String cmd = tokens.size() > 1 ? tokens[1] : "";
-
-  if (cmd == "hello" || cmd == "status") { sendReply(id, true); return; }
-  if (cmd == "disarm") {
-    disarm("Host request");
-    setEmotion(EMOTION_IDLE, "GhostDesk 断开，进入对讲机模式", 2000);
-    playTone(600, 100);
-    sendReply(id, true);
-    updateScreen();
-    return;
-  }
-  if (cmd == "begin") {
-    if (tokens.size() < 3) { sendReply(id, false, "syntax"); return; }
-    if (state.armed) { sendReply(id, false, "armed"); return; }
-    state.armed = true;
-    state.session = tokens[2];
-    state.emergencyStopped = false;
-    state.leaseExpireAt = millis() + LEASE_TIMEOUT_MS;
-    state.lastAction = "Session Started: " + tokens[2].substring(0, 6);
-    playTone(1200, 150);
-    sendReply(id, true);
-    updateScreen();
-    return;
-  }
-
-  if (tokens.size() < 3) { sendReply(id, false, "syntax"); return; }
-  if (!state.armed || tokens[2] != state.session) { sendReply(id, false, "session"); return; }
-
-  if (cmd == "ping") {
-    state.leaseExpireAt = millis() + LEASE_TIMEOUT_MS;
-    sendReply(id, true);
-    return;
-  }
-  if (millis() > state.leaseExpireAt) {
-    disarm("Lease timeout");
-    sendReply(id, false, "timeout");
-    updateScreen();
-    return;
-  }
-
-  state.leaseExpireAt = millis() + LEASE_TIMEOUT_MS;
-  state.actionCount++;
-
-  if (cmd == "move") {
-    if (tokens.size() < 5) { sendReply(id, false, "syntax"); return; }
-    Mouse.move(tokens[3].toInt(), tokens[4].toInt());
-    state.lastAction = "MOVE: dx=" + tokens[3] + " dy=" + tokens[4];
-    sendReply(id, true);
-    return;
-  }
-  if (cmd == "click") {
-    if (tokens.size() < 4) { sendReply(id, false, "syntax"); return; }
-    uint8_t b = (tokens[3] == "right") ? MOUSE_RIGHT : MOUSE_LEFT;
-    Mouse.press(b); delay(10); Mouse.release(b);
-    state.lastAction = "CLICK: " + tokens[3];
-    sendReply(id, true);
-    return;
-  }
-  if (cmd == "wheel") {
-    if (tokens.size() < 4) { sendReply(id, false, "syntax"); return; }
-    Mouse.move(0, 0, tokens[3].toInt());
-    state.lastAction = "WHEEL: " + tokens[3];
-    sendReply(id, true);
-    return;
-  }
-  if (cmd == "paste") {
-    Keyboard.press(KEY_LEFT_CTRL); Keyboard.press('v'); delay(15); Keyboard.releaseAll();
-    state.lastAction = "PASTE: [Ctrl+V]";
-    sendReply(id, true);
-    return;
-  }
-  if (cmd == "key") {
-    if (tokens.size() < 4) { sendReply(id, false, "syntax"); return; }
-    String k = tokens[3]; k.toLowerCase();
-    if (k == "enter") Keyboard.write(KEY_RETURN);
-    else if (k == "tab") Keyboard.write(KEY_TAB);
-    else if (k == "backspace") Keyboard.write(KEY_BACKSPACE);
-    else if (k == "delete") Keyboard.write(KEY_DELETE);
-    else if (k == "left") Keyboard.write(KEY_LEFT_ARROW);
-    else if (k == "right") Keyboard.write(KEY_RIGHT_ARROW);
-    else if (k == "up") Keyboard.write(KEY_UP_ARROW);
-    else if (k == "down") Keyboard.write(KEY_DOWN_ARROW);
-    else if (k == "home") Keyboard.write(KEY_HOME);
-    else if (k == "end") Keyboard.write(KEY_END);
-    else if (k == "escape") Keyboard.write(KEY_ESC);
-    else if (k == "pagedown") Keyboard.write(KEY_PAGE_DOWN);
-    else if (k == "ctrl+a") {
-      Keyboard.press(KEY_LEFT_CTRL); Keyboard.press('a'); delay(10); Keyboard.releaseAll();
-    } else if (k == "shift") {
-      Keyboard.press(KEY_LEFT_SHIFT); delay(10); Keyboard.release(KEY_LEFT_SHIFT);
-    } else {
-      sendReply(id, false, "unsupported_key");
-      return;
-    }
-    state.lastAction = "KEY: " + k;
-    sendReply(id, true);
-    return;
-  }
-  if (cmd == "text") {
-    if (tokens.size() < 4) { sendReply(id, false, "syntax"); return; }
-    Keyboard.print(tokens[3]);
-    state.lastAction = "TYPE: " + tokens[3];
-    sendReply(id, true);
-    return;
-  }
-  sendReply(id, false, "unknown_cmd");
 }
 
 void setup() {
   auto cfg = M5.config();
+  cfg.internal_spk = false;
+  cfg.external_spk = false;
+  cfg.internal_mic = true; // 开启板载 ES7210 高灵敏度双麦克风
   M5.begin(cfg);
-  M5.Display.setRotation(1);
-  M5.Display.setBrightness(120);
-  M5.Speaker.setVolume(160);
 
-  // 初始化双麦克风 (ES7210 16kHz 16bit)
-  auto mic_cfg = M5.Mic.config();
-  mic_cfg.sample_rate = MIC_SAMPLE_RATE;
-  mic_cfg.stereo = false;
-  M5.Mic.config(mic_cfg);
+  // 极度关键：将触控滑动阈值由默认过紧的 8px 放宽到 80px，彻底根除手指接触时微移被误判为 flick 导致丢点击的缺陷！
+  M5.Touch.setFlickThresh(80);
+
+  M5.Display.setRotation(1);
+  M5.Display.setBrightness(state.brightness);
+  M5.Display.clear(TFT_BLACK);
+
+  // 初始化 PSRAM 双缓冲画布
+  canvas.setColorDepth(16);
+  canvas.createSprite(320, 240);
+  canvas.setFont(&fonts::efontCN_14);
+  canvas.setTextWrap(true);
+
+  // 释放 Speaker 资源，将 I2S 与 DMA 总线完全交由麦克风独占
+  M5.Speaker.end();
+
+  // 配置 ES7210 声学前端放大：针对 1.5~2 米远场拾音强力增益
+  auto micCfg = M5.Mic.config();
+  micCfg.sample_rate = 16000;
+  micCfg.magnification = 24;      // 远距离灵敏度放大 (24x)
+  micCfg.noise_filter_level = 16; // 自适应环境低噪平滑
+  M5.Mic.config(micCfg);
   M5.Mic.begin();
 
-  USB.VID(0xCAFE);
-  USB.PID(0x4001);
-  USB.productName("FlowDesk USB Bridge");
-  USB.manufacturerName("FlowDesk");
-  USB.serialNumber("M5-CORES3-WALKIE-TALKIE");
-
-  Keyboard.begin();
-  Mouse.begin();
-  USB.begin();
   Serial.begin(115200);
 
-  playTone(880, 80); delay(100); playTone(1320, 120); delay(130); playTone(1760, 160);
-  nextBlinkTime = millis() + 2000;
-  nextLookTime = millis() + 4000;
-  updateScreen();
-}
+  // 创建独立的 FreeRTOS 音频采集与流式推流任务 (固定在 Core 0，杜绝与 Core 1 抢占)
+  xTaskCreatePinnedToCore(
+    audioStreamTask,
+    "audio_task",
+    8192,
+    NULL,
+    1,
+    &audioTaskHandle,
+    0
+  );
 
-uint32_t lastScreenUpdate = 0;
+  // 原生免驱 BLE 蓝牙 HID 键盘初始化 (广播名: FlowDesk Remote)
+  BleCombo.begin("FlowDesk Remote");
+
+  nextBlinkTime = millis() + 2000;
+  nextLookTime = millis() + 3500;
+  state.lastUserActionTime = millis();
+  state.cachedBattery = M5.Power.getBatteryLevel();
+  renderScreen();
+}
 
 void loop() {
   M5.update();
   uint32_t now = millis();
 
-  // 1. 触屏状态检测 (支持持续按住 PTT)
+  // 1. 极致顺滑、100% 灵敏的触控捕获 (采用物理按下状态锁，彻底防止漏检)
   auto touch = M5.Touch.getDetail();
-  
-  if (state.armed) {
-    if (touch.wasPressed() && touch.y >= 170 && touch.y <= 235) {
-      state.emergencyStopped = true;
-      disarm("EMERGENCY STOP PRESSED");
-      playTone(400, 300);
-      updateScreen();
+  bool isTouching = touch.isPressed();
+  static bool touchLatched = false; // 严格单次按下锁
+  static uint32_t tab2PressStart = 0;
+  static bool tab2LongTriggered = false;
+
+  if (isTouching) {
+    state.lastUserActionTime = now;
+    if (state.isDimmed) {
+      state.isDimmed = false;
+      M5.Display.setBrightness(state.brightness);
+      renderScreen();
     }
-  } else {
-    // 检查中间【🎙️ 按住说话】按钮区域 (X: 100 ~ 220, Y: 170 ~ 235)
-    bool touchingPTT = touch.isPressed() && (touch.x >= 95 && touch.x <= 225) && (touch.y >= 165 && touch.y <= 235);
-    
-    if (touchingPTT) {
-      if (!state.isRecordingVoice) {
-        startVoiceRecording();
+
+    // 实时采样精准坐标 (优先当前触点，备选 base_x/prev_x)
+    int tx = touch.x;
+    int ty = touch.y;
+    if (tx <= 0 && touch.base_x > 0) tx = touch.base_x;
+    if (ty <= 0 && touch.base_y > 0) ty = touch.base_y;
+    if (tx <= 0 && touch.prev_x > 0) tx = touch.prev_x;
+    if (ty <= 0 && touch.prev_y > 0) ty = touch.prev_y;
+    if (tx <= 0) tx = 160; // 兜底中心点
+    if (ty <= 0) ty = 110;
+
+    // 长按顶栏「遥控」Tab 1.5 秒触发重新广播配对，方便直接流转到第二台 Windows 电脑
+    if (ty <= 54 && tx >= 100 && tx < 198) {
+      if (tab2PressStart == 0) tab2PressStart = now;
+      if (!tab2LongTriggered && (now - tab2PressStart >= 1500)) {
+        tab2LongTriggered = true;
+        BleCombo.startAdvertising();
+        showToast("已开启蓝牙配对广播", 2000);
+        renderScreen();
       }
     } else {
-      if (state.isRecordingVoice) {
-        stopVoiceRecording();
-      }
+      tab2PressStart = 0;
+      tab2LongTriggered = false;
     }
 
-    // 左键和右键单击判定
-    if (touch.wasClicked()) {
-      if (touch.y >= 170 && touch.y <= 235) {
-        if (touch.x >= 8 && touch.x <= 95) {
-          doApprove();
-        } else if (touch.x >= 224 && touch.x <= 312) {
-          doReject();
+    if (!touchLatched) {
+      touchLatched = true; // 锁定本次触摸，防止连击
+
+      // 区域 A：顶部导航选项卡 (Y <= 54，对应顶栏三大加大 Tab，零死角命中)
+      if (ty <= 54) {
+        if (tx < 100) {
+          // 点击 Tab 1:「云端」
+          if (currentMode != MODE_CORES3_MIC) {
+            if (state.isBleVoiceActive) state.isBleVoiceActive = false;
+            state.pendingReturnTime = 0;
+            currentMode = MODE_CORES3_MIC;
+            renderScreen();
+          }
+        } else if (tx >= 100 && tx < 198) {
+          // 点击 Tab 2:「遥控」
+          if (currentMode != MODE_BLE_REMOTE) {
+            if (state.isRecordingVoice) cancelVoiceRecording();
+            state.pendingReturnTime = 0;
+            currentMode = MODE_BLE_REMOTE;
+            renderScreen();
+          }
+        } else {
+          // 点击 Tab 3:「翻页」 (tx >= 198 覆盖全部右侧区域)
+          if (currentMode != MODE_PAGE_FLIP) {
+            if (state.isRecordingVoice) cancelVoiceRecording();
+            if (state.isBleVoiceActive) state.isBleVoiceActive = false;
+            state.pendingReturnTime = 0;
+            currentMode = MODE_PAGE_FLIP;
+            renderScreen();
+          }
         }
-      } else if (touch.y < 160) {
-        setEmotion(EMOTION_HAPPY, "主人，随时按住中间按钮对我说话！", 2500);
-        playTone(1500, 80); delay(90); playTone(2000, 120);
+        return; // 顶栏点击必须绝对 100% 拦截，绝不允许穿透到底部触发语音！
       }
+
+      // 区域 B：核心操作区 (Y > 54)
+      if (currentMode == MODE_PAGE_FLIP) {
+        // ── Tab 3: 翻页遥控模式 (左半边上一页，右半边下一页，250ms 点击闪烁动效) ──
+        if (tx < 160) {
+          state.btnPageUpHighlightUntil = now + 250;
+          if (BleCombo.isConnected()) {
+            BleCombo.pressKey(0, 0x4B); // HID_KEY_PAGE_UP
+            BleCombo.releaseAllKeys();
+          }
+          Serial.println("CMD:pageup");
+        } else {
+          state.btnPageDownHighlightUntil = now + 250;
+          if (BleCombo.isConnected()) {
+            BleCombo.pressKey(0, 0x4E); // HID_KEY_PAGE_DOWN
+            BleCombo.releaseAllKeys();
+          }
+          Serial.println("CMD:pagedown");
+        }
+        renderScreen();
+        return;
+      } else if (currentMode == MODE_CORES3_MIC) {
+        // ── Tab 1: 云端语音模式 (对齐顶栏无条件即触即发，零死角分区) ──
+        if (ty >= 170 && tx < 160) {
+          // 左下角：无条件【取消】(点亮按键高亮变色 250ms)
+          state.btnCancelHighlightUntil = now + 250;
+          if (state.isRecordingVoice) {
+            cancelVoiceRecording();
+          } else {
+            setEmotion(EMOTION_IDLE, "已取消", 800);
+          }
+        } else if (ty >= 170 && tx >= 160) {
+          // 右下角：【完成】发送 (点亮按键高亮变色 250ms)
+          state.btnSendHighlightUntil = now + 250;
+          if (state.isRecordingVoice) {
+            stopVoiceRecording();
+          } else {
+            startVoiceRecording();
+          }
+        } else {
+          // 上半部分麦克风 (Y < 170 整个超大区域)：点击切换录音/发送
+          if (state.isRecordingVoice) {
+            stopVoiceRecording();
+          } else {
+            startVoiceRecording();
+          }
+        }
+        renderScreen();
+        return;
+      } else {
+        // ── Tab 2: 电脑遥控模式 (完全复刻顶栏零门槛逻辑，无条件响应) ──
+        // 1. 左下大区域【取消】判定区 (ty >= 170 && tx < 160)
+        if (ty >= 170 && tx < 160) {
+          state.btnCancelHighlightUntil = now + 250; // 点亮按键高亮变色 250ms
+          bool wasActive = state.isBleVoiceActive;
+          state.isBleVoiceActive = false;
+          state.pendingReturnTime = 0; // 彻底取消自动回车
+
+          if (BleCombo.isConnected()) {
+            if (wasActive) {
+              // 1. 退出微信输入法听音状态
+              BleCombo.pressRightAlt();
+              BleCombo.releaseRightAlt();
+            }
+            // 2. 发送 Escape 关闭语音悬浮窗 / 候选词
+            BleCombo.pressKey(0, HID_KEY_ESCAPE);
+            BleCombo.releaseAllKeys();
+
+            // 3. 发送 Ctrl + Z 撤销刚打上屏的整段文字 (HID 'z' 为 0x1D)
+            BleCombo.pressKey(KEY_BLE_CTRL, 0x1D);
+            BleCombo.releaseAllKeys();
+          }
+          if (wasActive) Serial.println("CMD:right_alt");
+          Serial.println("CMD:escape");
+          Serial.println("CMD:undo");
+          setEmotion(EMOTION_IDLE, "已取消撤销", 1000);
+          renderScreen();
+          return;
+        }
+
+        // 2. 右下大区域【发送】判定区 (ty >= 170 && tx >= 160)
+        if (ty >= 170 && tx >= 160) {
+          state.btnSendHighlightUntil = now + 250; // 点亮按键高亮变色 250ms
+          state.pendingReturnTime = 0; // 清除排队
+          state.isBleVoiceActive = false;
+          if (BleCombo.isConnected()) {
+            BleCombo.pressKey(0, BLE_KEY_RETURN);
+            BleCombo.releaseAllKeys();
+          }
+          Serial.println("CMD:enter");
+          state.cmdEnterSentTime = now;
+          renderScreen();
+          return;
+        }
+
+        // 3. 上半部分巨大麦克风区域 (ty < 170)：开关语音输入 / 整理中点击提前发送
+        if (state.pendingReturnTime > 0) {
+          // 整理倒计时中轻碰麦克风 -> 立即发送
+          state.pendingReturnTime = 0;
+          if (BleCombo.isConnected()) {
+            BleCombo.pressKey(0, BLE_KEY_RETURN);
+            BleCombo.releaseAllKeys();
+          }
+          Serial.println("CMD:enter");
+          state.cmdEnterSentTime = now;
+        } else if (!state.isBleVoiceActive) {
+          // 未开启语音 -> 开启语音输入
+          state.isBleVoiceActive = true;
+          state.bleVoiceStartTime = now;
+          if (BleCombo.isConnected()) {
+            BleCombo.pressRightAlt();
+            BleCombo.releaseRightAlt();
+          }
+          Serial.println("CMD:right_alt");
+        } else {
+          // 正在录音 -> 停止录音，进入 2 秒 AI 整理倒计时
+          state.isBleVoiceActive = false;
+          if (BleCombo.isConnected()) {
+            BleCombo.pressRightAlt();
+            BleCombo.releaseRightAlt();
+          }
+          Serial.println("CMD:right_alt");
+          state.pendingReturnTime = now + 2000;
+        }
+        renderScreen();
+        return;
+      }
+    }
+  } else {
+    // 手指离开屏幕，立即复位锁，准备下一次极速触发
+    touchLatched = false;
+    tab2PressStart = 0;
+    tab2LongTriggered = false;
+  }
+
+  // 1.5 非阻塞延时自动提交 (时间一到敲击回车，零卡顿，100% 成功发送)
+  if (state.pendingReturnTime > 0 && now >= state.pendingReturnTime) {
+    state.pendingReturnTime = 0;
+    if (BleCombo.isConnected()) {
+      BleCombo.pressKey(0, BLE_KEY_RETURN);
+      BleCombo.releaseAllKeys();
+    }
+    Serial.println("CMD:enter");
+    state.cmdEnterSentTime = now;
+    renderScreen();
+  }
+
+  // 1.8 纯 BLE 蓝牙模式发送回执超时兜底 (若未连 USB 且仅用蓝牙)
+  if (state.cmdEnterSentTime > 0 && now - state.cmdEnterSentTime >= 600) {
+    state.cmdEnterSentTime = 0;
+    if (BleCombo.isConnected() && state.sentNoticeState == 0) {
+      state.sentNoticeState = 1;
+      state.sentNoticeUntil = now + 1800;
+      renderScreen();
     }
   }
 
-  // 2. 录音采样处理
-  if (state.isRecordingVoice) {
-    processMicrophone();
-  }
-
-  // 3. 表情与动画更新
-  if (!state.armed && !state.isRecordingVoice) {
-    if (state.emotion != EMOTION_IDLE && state.emotionUntil > 0 && now > state.emotionUntil) {
-      state.emotion = EMOTION_IDLE;
-      state.buddyStatusMsg = "Antigravity / Claude 待命";
-      state.emotionUntil = 0;
+  // 2. 萌宠动画更新
+  if (currentStyle == STYLE_APPLE_PET && !state.isRecordingVoice) {
+    if (now > nextBlinkTime) {
+      eyeBlinkState = (eyeBlinkState + 1) % 3;
+      nextBlinkTime = (eyeBlinkState == 0) ? now + random(2500, 5000) : now + 60;
     }
-
-    if (state.emotion == EMOTION_IDLE) {
-      if (now > nextBlinkTime) {
-        eyeBlinkState = (eyeBlinkState + 1) % 3;
-        nextBlinkTime = (eyeBlinkState == 0) ? now + random(2500, 5000) : now + 60;
-      }
-      if (now > nextLookTime) {
-        eyeLookOffset = random(-14, 15);
-        nextLookTime = now + random(3000, 6000);
-      }
-    } else if (state.emotion == EMOTION_THINKING) {
-      eyeBlinkState = 0;
-      eyeLookOffset = (int)(sin(now / 150.0) * 16.0);
+    if (now > nextLookTime) {
+      eyeLookOffsetX = random(-12, 13);
+      eyeLookOffsetY = random(-6, 7);
+      nextLookTime = now + random(3000, 6000);
     }
   }
 
-  // 4. GhostDesk 租约检查
-  if (state.armed && now > state.leaseExpireAt) {
-    disarm("Heartbeat Timeout");
+  // 3. 定时还原状态
+  if (state.emotion != EMOTION_IDLE && state.emotionUntil > 0 && now > state.emotionUntil) {
+    state.emotion = EMOTION_IDLE;
+    state.statusMsg = "";
+    state.emotionUntil = 0;
   }
 
-  // 5. 读取电脑串口命令
+  // 3.5「✓ 已发送」/「✕ 未发送」提示框到期自动无缝消除
+  static bool lastNoticeActive = false;
+  bool noticeActive = (now < state.sentNoticeUntil);
+  if (lastNoticeActive && !noticeActive) {
+    state.sentNoticeState = 0;
+    renderScreen();
+  }
+  lastNoticeActive = noticeActive;
+
+  // 4. 串口指令读取
   while (Serial.available()) {
     char c = (char)Serial.read();
     if (c == '\n') {
@@ -612,10 +982,36 @@ void loop() {
     }
   }
 
-  // 6. 定时刷新屏幕 (录音时以 50ms 高帧率渲染声波，平常 80ms)
-  uint32_t refreshInterval = state.isRecordingVoice ? 50 : 80;
-  if (now - lastScreenUpdate > refreshInterval) {
-    lastScreenUpdate = now;
-    updateScreen();
+  // 4.5 待机 60 秒自动进入微光护眼模式 (30% 亮度，降低发热与功耗)
+  if (!state.isDimmed && !state.isRecordingVoice && !state.isBleVoiceActive && (now - state.lastUserActionTime > 60000)) {
+    state.isDimmed = true;
+    M5.Display.setBrightness(40); // 30% 微光护眼
+  }
+
+  // 5. 电量非阻塞更新 (每 5 秒安全读取一次 AXP2101，绝不阻塞触控 I2C 总线)
+  if (now - state.lastBatteryCheck > 5000) {
+    state.lastBatteryCheck = now;
+    state.cachedBattery = M5.Power.getBatteryLevel();
+  }
+
+  // 6. 智能动态推屏 (平滑动画与触控总线零冲突：80ms 刷新既丝滑又不占用总线)
+  static uint32_t lastRenderTime = 0;
+  bool isAnimating = state.isRecordingVoice 
+                  || state.isBleVoiceActive 
+                  || (state.pendingReturnTime > 0)
+                  || (now < state.sentNoticeUntil)
+                  || (now < state.btnCancelHighlightUntil)
+                  || (now < state.btnSendHighlightUntil)
+                  || (now < state.btnPageUpHighlightUntil)
+                  || (now < state.btnPageDownHighlightUntil)
+                  || (now < state.toastUntil)
+                  || (state.emotion != EMOTION_IDLE)
+                  || (currentMode == MODE_CORES3_MIC && currentStyle == STYLE_APPLE_PET)
+                  || (!BleCombo.isConnected() && !state.isDimmed);
+
+  uint32_t renderInterval = (state.isRecordingVoice || state.pendingReturnTime > 0 || state.isBleVoiceActive) ? 80 : 120;
+  if (isAnimating && (now - lastRenderTime >= renderInterval)) {
+    lastRenderTime = now;
+    renderScreen();
   }
 }

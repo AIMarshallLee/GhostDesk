@@ -18,6 +18,11 @@ import sys
 import time
 import wave
 
+if sys.stdout and hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if sys.stderr and hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 # 自动补全必要轻量库 (模块名 -> pip 包名映射，防止误装废弃的 serial 包)
 REQUIRED_PACKAGES = {
     "serial": "pyserial>=3.5",
@@ -35,9 +40,22 @@ for mod, pkg in REQUIRED_PACKAGES.items():
 
 import pyautogui
 import pyperclip
+pyautogui.FAILSAFE = False
 import serial
 import serial.tools.list_ports
 import speech_recognition as sr
+
+try:
+    from scripts.desktop_switcher import IntentDispatcher, DesktopController, activate_window_win32, list_windows
+except ImportError:
+    from desktop_switcher import IntentDispatcher, DesktopController, activate_window_win32, list_windows
+
+try:
+    from scripts.volc_streaming_asr import VolcStreamingASR, load_volc_config
+except ImportError:
+    from volc_streaming_asr import VolcStreamingASR, load_volc_config
+
+import asyncio
 
 SAMPLE_RATE = 16000
 
@@ -64,6 +82,35 @@ def find_cores3_port():
 
 
 
+def apply_software_agc(pcm_bytes: bytes, target_rms: float = 3500.0, max_gain: float = 8.0) -> bytes:
+    """自适应增益控制 (AGC)：针对 1.5~2 米远距离拾音，动态平滑放大声波，防止破音截断"""
+    if not pcm_bytes or len(pcm_bytes) < 4:
+        return pcm_bytes
+    count = len(pcm_bytes) // 2
+    samples = struct.unpack(f"<{count}h", pcm_bytes[:count * 2])
+
+    sq_sum = sum(s * s for s in samples)
+    current_rms = (sq_sum / count) ** 0.5
+    if current_rms < 15.0:  # 极低静音阈值
+        return pcm_bytes
+
+    gain = min(target_rms / current_rms, max_gain)
+    if gain <= 1.05:
+        return pcm_bytes
+
+    print(f"🔊 [远场声学 AGC 自动补偿] 检测到人声较远 (RMS={current_rms:.1f})，已动态无损增益 {gain:.2f}x")
+    boosted = []
+    for s in samples:
+        val = int(s * gain)
+        if val > 32767:
+            val = 32767
+        elif val < -32768:
+            val = -32768
+        boosted.append(val)
+
+    return struct.pack(f"<{count}h", *boosted)
+
+
 def pcm_to_wav_bytes(pcm_data: bytes, sample_rate: int = 16000) -> bytes:
     """将 PCM 裸数据封装为标准 WAV 格式"""
     buf = io.BytesIO()
@@ -75,48 +122,181 @@ def pcm_to_wav_bytes(pcm_data: bytes, sample_rate: int = 16000) -> bytes:
     return buf.getvalue()
 
 
-def recognize_speech(wav_bytes: bytes) -> str:
-    """语音识别处理 (优先免 Key 极速识别)"""
+def recognize_speech(pcm_bytes: bytes, wav_bytes: bytes) -> str:
+    """语音识别处理 (优先火山引擎豆包大模型流式识别，无配置则自动回退)"""
+    volc_cfg = load_volc_config()
+    if volc_cfg.get("volc_appid") and volc_cfg.get("volc_token"):
+        try:
+            print("🚀 正在通过火山引擎豆包大模型 2.0 (SeedASR) 进行极速流式识别...")
+            import sys
+            sys.path.insert(0, os.path.join(os.path.dirname(__file__), "volc_official_demo", "sauc_python"))
+            import protocol
+
+            config = protocol.Config(
+                app_key=volc_cfg["volc_appid"],
+                access_key=volc_cfg["volc_token"],
+                resource_id="volc.seedasr.sauc.duration"
+            )
+            temp_wav = os.path.join(os.path.dirname(__file__), "temp_record.wav")
+            with open(temp_wav, "wb") as f:
+                f.write(wav_bytes)
+
+            async def run_asr():
+                url = "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_async"
+                payload = {
+                    "user": {"uid": "ghostdesk_user"},
+                    "audio": {
+                        "format": "wav",
+                        "codec": "raw",
+                        "rate": 16000,
+                        "bits": 16,
+                        "channel": 1
+                    },
+                    "request": {
+                        "model_name": "bigmodel",
+                        "enable_itn": True,
+                        "enable_punc": True,
+                        "enable_ddc": True,
+                        "show_utterances": True,
+                        "enable_nonstream": True
+                    }
+                }
+                text_out = ""
+                async with protocol.AsrWsClient(url, segment_duration=200) as client:
+                    async for response in client.execute(temp_wav, config, payload):
+                        if response.payload_msg and "result" in response.payload_msg:
+                            res = response.payload_msg["result"]
+                            if "text" in res and res["text"]:
+                                text_out = res["text"]
+                return text_out
+
+            text = asyncio.run(run_asr())
+            if text:
+                return text.strip()
+        except Exception as e:
+            print(f"⚠️ 火山流式识别异常: {e}")
+
     recognizer = sr.Recognizer()
     with io.BytesIO(wav_bytes) as audio_file:
         with sr.AudioFile(audio_file) as source:
             audio_data = recognizer.record(source)
 
     try:
-        # 1. 尝试调用 Google 免费高准确率语音接口 (中文普通话)
+        # 备选通用识别
         text = recognizer.recognize_google(audio_data, language="zh-CN")
         return text.strip()
     except sr.UnknownValueError:
-        # 音量过小或无清晰人声
         return ""
     except sr.RequestError as e:
-        print(f"⚠️ 无法连接在线语音识别服务 ({e})。如处于离线/内网环境，可通过 pip install faster-whisper 启用私有化离线听写。")
+        print(f"⚠️ 在线语音连接失败 ({e})。配置火山方舟 AppID/Token 即可启用豆包大模型原生流式识别。")
         return ""
     except Exception as e:
         print(f"⚠️ 语音识别异常: {e}")
         return ""
 
 
+def ensure_coding_window_focused():
+    """自动将正在使用的代码或AI对话窗口聚焦到前台，突破 Windows 前台聚焦限制"""
+    if sys.platform != "win32":
+        return True
+
+    import ctypes
+    cur_fg = ctypes.windll.user32.GetForegroundWindow()
+
+    # 优先查找目前运行的 AI/代码开发应用窗口
+    priority_apps = ["antigravity", "vscode", "terminal", "claude", "chatgpt"]
+    for app_key in priority_apps:
+        w = DesktopController.find_app_window(app_key)
+        if w:
+            if cur_fg == w["hwnd"]:
+                return True # 已经在前台聚焦，0 延迟跳过！
+            activate_window_win32(w["hwnd"])
+            time.sleep(0.08)
+            return True
+    return False
+
+
 def inject_prompt_to_active_window(text: str, auto_enter: bool = True):
-    """通过剪贴板瞬时填入当前窗口，完美支持中文与特殊符号 (跨平台 Windows / macOS)"""
+    """自动唤醒目标窗口，极速无感填入并敲击 Enter 回车发送"""
     if not text:
         return
-    # 备份旧剪贴板
-    old_clipboard = pyperclip.paste()
-    try:
-        pyperclip.copy(text)
-        time.sleep(0.06)
-        # 跨平台按键适配：macOS 使用 Command+V，Windows 使用 Ctrl+V
+
+    # 1. 确保前台窗口处于就绪状态
+    ensure_coding_window_focused()
+
+    # 2. 写入剪贴板 (极速 30ms 剪贴板就绪)
+    pyperclip.copy(text)
+    time.sleep(0.03)
+
+    # 3. 硬件级极速发送 Ctrl+V 与 Enter 回车
+    if sys.platform == "win32":
+        import ctypes
+        user32 = ctypes.windll.user32
+        KEYEVENTF_KEYUP = 0x0002
+        VK_CONTROL = 0x11
+        VK_V = 0x56
+        VK_RETURN = 0x0D
+
+        # 瞬时按下并释放 Ctrl+V
+        user32.keybd_event(VK_CONTROL, 0, 0, 0)
+        user32.keybd_event(VK_V, 0, 0, 0)
+        time.sleep(0.02)
+        user32.keybd_event(VK_V, 0, KEYEVENTF_KEYUP, 0)
+        user32.keybd_event(VK_CONTROL, 0, KEYEVENTF_KEYUP, 0)
+
+        if auto_enter:
+            time.sleep(0.06)
+            # 瞬时敲击回车 Enter
+            user32.keybd_event(VK_RETURN, 0, 0, 0)
+            time.sleep(0.02)
+            user32.keybd_event(VK_RETURN, 0, KEYEVENTF_KEYUP, 0)
+    else:
+        # macOS
         paste_modifier = "command" if sys.platform == "darwin" else "ctrl"
         pyautogui.hotkey(paste_modifier, "v")
         if auto_enter:
-            time.sleep(0.08)
+            time.sleep(0.06)
             pyautogui.press("enter")
-        print(f"🚀 已自动发送给 AI: 【{text}】")
-    finally:
-        # 短暂延迟后恢复剪贴板
-        time.sleep(0.5)
-        pyperclip.copy(old_clipboard)
+
+    print(f"🚀 已全自动填入并敲击回车: 【{text}】")
+
+
+import threading
+
+def handle_audio_async(raw_buffer: bytes, ser):
+    def worker():
+        if len(raw_buffer) < 3200:
+            print("⚠️ 说话时间过短，已忽略。")
+            try:
+                ser.write("buddy\tidle\t录音时间过短\n".encode("utf-8"))
+            except Exception:
+                pass
+            return
+
+        boosted_pcm = apply_software_agc(raw_buffer, target_rms=3500.0, max_gain=8.0)
+        wav_data = pcm_to_wav_bytes(boosted_pcm, SAMPLE_RATE)
+        prompt_text = recognize_speech(boosted_pcm, wav_data)
+
+        if prompt_text:
+            print(f"🎉 识别成功: \"{prompt_text}\"")
+            short_msg = prompt_text[:16] + ("..." if len(prompt_text) > 16 else "")
+            try:
+                ser.write(f"buddy\tdone\t{short_msg}\n".encode("utf-8"))
+            except Exception:
+                pass
+            inject_prompt_to_active_window(prompt_text, auto_enter=True)
+            try:
+                ser.write(b"NOTICE:SENT\n")
+            except Exception:
+                pass
+        else:
+            print("❓ 未能清晰识别人声，请重试。")
+            try:
+                ser.write("buddy\terror\t未能听清，请重试\n".encode("utf-8"))
+            except Exception:
+                pass
+
+    threading.Thread(target=worker, daemon=True).start()
 
 
 def run_walkie_talkie_daemon():
@@ -146,37 +326,102 @@ def run_walkie_talkie_daemon():
                     if not line:
                         continue
 
-                    if line == "VOICE_START":
+                    if line.startswith("CMD:switch:"):
+                        app_target = line.split(":", 2)[2].strip()
+                        print(f"\n👆 [CoreS3 硬件手势] 滑动切换应用: {app_target}")
+                        DesktopController.switch_to_app(app_target)
+                        continue
+
+                    elif line == "CMD:right_alt":
+                        print("\n⌨️ [CoreS3 硬件指令] 触发电脑端原生输入法语音 (发送 Right Alt)...")
+                        if sys.platform == "win32":
+                            import ctypes
+                            VK_RMENU = 0xA5
+                            KEYEVENTF_KEYUP = 0x0002
+                            KEYEVENTF_EXTENDEDKEY = 0x0001
+                            ctypes.windll.user32.keybd_event(VK_RMENU, 0, KEYEVENTF_EXTENDEDKEY, 0)
+                            time.sleep(0.05)
+                            ctypes.windll.user32.keybd_event(VK_RMENU, 0, KEYEVENTF_EXTENDEDKEY | KEYEVENTF_KEYUP, 0)
+                        continue
+
+                    elif line == "CMD:escape":
+                        print("\n✕ [CoreS3 硬件指令] 收到取消指令 (发送 Escape 撤销输入)...")
+                        if sys.platform == "win32":
+                            import ctypes
+                            VK_ESCAPE = 0x1B
+                            KEYEVENTF_KEYUP = 0x0002
+                            ctypes.windll.user32.keybd_event(VK_ESCAPE, 0, 0, 0)
+                            time.sleep(0.04)
+                            ctypes.windll.user32.keybd_event(VK_ESCAPE, 0, KEYEVENTF_KEYUP, 0)
+                        continue
+
+                    elif line == "CMD:enter":
+                        print("\n⏎ [CoreS3 硬件指令] 收到回车发送指令...")
+                        if sys.platform == "win32":
+                            import ctypes
+                            user32 = ctypes.windll.user32
+                            user32.GetForegroundWindow.restype = ctypes.c_void_p
+                            hwnd = user32.GetForegroundWindow()
+                            win_title = "活动窗口"
+                            if hwnd:
+                                title_buf = ctypes.create_unicode_buffer(512)
+                                user32.GetWindowTextW(hwnd, title_buf, 512)
+                                if title_buf.value:
+                                    win_title = title_buf.value
+
+                            print(f"🎯 正在向窗口 [{win_title}] 注入物理回车 Enter...")
+                            time.sleep(0.04)
+                            VK_RETURN = 0x0D
+                            KEYEVENTF_KEYUP = 0x0002
+                            user32.keybd_event(VK_RETURN, 0, 0, 0)
+                            time.sleep(0.04)
+                            user32.keybd_event(VK_RETURN, 0, KEYEVENTF_KEYUP, 0)
+                            print(f"✅ 回车已成功敲击入 [{win_title}]！")
+                            try:
+                                ser.write(b"NOTICE:SENT\n")
+                            except Exception:
+                                pass
+                        continue
+
+                    elif line == "CMD:pageup":
+                        print("\n⬆️ [CoreS3 翻页遥控] 上一页 Page Up")
+                        if sys.platform == "win32":
+                            import ctypes
+                            VK_PRIOR = 0x21
+                            KEYEVENTF_KEYUP = 0x0002
+                            KEYEVENTF_EXTENDEDKEY = 0x0001
+                            ctypes.windll.user32.keybd_event(VK_PRIOR, 0, KEYEVENTF_EXTENDEDKEY, 0)
+                            time.sleep(0.03)
+                            ctypes.windll.user32.keybd_event(VK_PRIOR, 0, KEYEVENTF_EXTENDEDKEY | KEYEVENTF_KEYUP, 0)
+                        continue
+
+                    elif line == "CMD:pagedown":
+                        print("\n⬇️ [CoreS3 翻页遥控] 下一页 Page Down")
+                        if sys.platform == "win32":
+                            import ctypes
+                            VK_NEXT = 0x22
+                            KEYEVENTF_KEYUP = 0x0002
+                            KEYEVENTF_EXTENDEDKEY = 0x0001
+                            ctypes.windll.user32.keybd_event(VK_NEXT, 0, KEYEVENTF_EXTENDEDKEY, 0)
+                            time.sleep(0.03)
+                            ctypes.windll.user32.keybd_event(VK_NEXT, 0, KEYEVENTF_EXTENDEDKEY | KEYEVENTF_KEYUP, 0)
+                        continue
+
+                    elif line == "VOICE_START":
                         is_recording = True
                         audio_buffer = bytearray()
                         print("\n🎙️ [对讲机开麦] 正在倾听您的指令...")
 
+                    elif line == "VOICE_CANCEL":
+                        is_recording = False
+                        audio_buffer = bytearray()
+                        print("\n❌ [对讲机取消] 用户已取消本次录音。")
+
                     elif line == "VOICE_END":
                         is_recording = False
-                        print(f"⏹️ [对讲机闭麦] 采样完成 ({len(audio_buffer)} 字节)，正在智能识别中...")
-
-                        if len(audio_buffer) < 3200:  # 录音过短 (小于0.1秒)
-                            print("⚠️ 说话时间过短，已忽略。")
-                            ser.write(b"buddy\tidle\t录音时间过短\n")
-                            ser.flush()
-                            continue
-
-                        # 语音识别
-                        wav_data = pcm_to_wav_bytes(bytes(audio_buffer), SAMPLE_RATE)
-                        prompt_text = recognize_speech(wav_data)
-
-                        if prompt_text:
-                            print(f"🎉 识别成功: \"{prompt_text}\"")
-                            # 通知 CoreS3 屏幕与声音
-                            short_msg = prompt_text[:16] + ("..." if len(prompt_text) > 16 else "")
-                            ser.write(f"buddy\tdone\t{short_msg}\n".encode("utf-8"))
-                            ser.flush()
-                            # 自动键入当前活动的 IDE / 终端
-                            inject_prompt_to_active_window(prompt_text, auto_enter=True)
-                        else:
-                            print("❓ 未能清晰识别人声，请重试。")
-                            ser.write(b"buddy\terror\t未能听清，请重试\n")
-                            ser.flush()
+                        print(f"⏹️ [对讲机闭麦] 采样完成 ({len(audio_buffer)} 字节)，后台异步转写中...")
+                        handle_audio_async(bytes(audio_buffer), ser)
+                        audio_buffer = bytearray()
 
                     elif line.startswith("V:") and is_recording:
                         # 解析十六进制音频块

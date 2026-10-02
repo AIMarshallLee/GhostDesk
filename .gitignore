@@ -21,10 +21,15 @@ data/
 # Environment and secrets
 .env
 .env.local
+volc_config.json
+*secret*
 
 # Firmware build intermediates
 firmware/build/
 firmware/.tools/
+firmware/m5stack_cores3/releases/
+scratch/
+*.wav
 
 # OS and IDE
 .DS_Store

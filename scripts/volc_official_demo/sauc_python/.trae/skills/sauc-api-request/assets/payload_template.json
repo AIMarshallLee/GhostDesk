@@ -1,0 +1,22 @@
+{
+  "user": {
+    "uid": "demo_uid"
+  },
+  "audio": {
+    "format": "wav",
+    "codec": "raw",
+    "rate": 16000,
+    "bits": 16,
+    "channel": 1
+  },
+  "request": {
+    "model_name": "bigmodel",
+    "enable_itn": true,
+    "enable_punc": true,
+    "enable_ddc": false,
+    "show_utterances": true,
+    "enable_nonstream": true,
+    "enable_speaker_info": false,
+    "end_window_size": 800
+  }
+}

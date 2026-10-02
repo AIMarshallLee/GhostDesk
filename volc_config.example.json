@@ -1,0 +1,7 @@
+{
+  "volc_appid": "你的火山引擎语音AppID",
+  "volc_token": "你的火山引擎语音AccessToken",
+  "volc_cluster": "volcengine_streaming_common",
+  "ark_api_key": "你的火山方舟API_Key(可选)",
+  "ark_endpoint_id": "你的方舟推理EndpointID(可选)"
+}

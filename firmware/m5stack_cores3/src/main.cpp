@@ -84,6 +84,7 @@ struct SystemState {
   uint32_t btnPageDownHighlightUntil = 0; // 下一页按键瞬时高亮时间戳
   uint32_t lastUserActionTime = 0;      // 最后一次用户触控操作时间
   bool isDimmed = false;                // 是否处于低功耗微暗屏状态
+  bool isSelectingDevice = false;       // 是否正在显示「4台设备选择菜单」弹窗
   int brightness = 190;
   volatile int liveVoiceLevel = 0; // 实时声学反馈 0~40
   
@@ -484,9 +485,87 @@ void drawBottomActionBar() {
   }
 }
 
+// ==========================================
+// 4 台设备选择菜单 (卡片式触摸面板)
+// ==========================================
+void drawDeviceSelectorModal() {
+  canvas.fillScreen(TFT_BLACK);
+
+  // 1. 顶部标题栏 (Y: 6 ~ 34)
+  canvas.setTextColor(TFT_WHITE);
+  canvas.setTextSize(1);
+  canvas.drawString("请选择要连接的设备", 14, 12);
+
+  // 右上角【返回】按钮 (X: 248, Y: 6, W: 58, H: 26, R: 6)
+  canvas.fillRoundRect(248, 6, 58, 26, 6, 0x18C3);
+  canvas.drawRoundRect(248, 6, 58, 26, 6, 0x52AA);
+  canvas.setTextColor(0xD69A);
+  canvas.drawCenterString("返回", 277, 12);
+
+  // 2. 4 个设备大卡片 (2x2 布局，超大触控面积，手指秒点)
+  const int cardX[4] = {14, 166, 14, 166};
+  const int cardY[4] = {38, 38, 134, 134};
+  const int cardW = 140;
+  const int cardH = 88;
+
+  const char* titles[4] = {"Win 1", "Win 2", "Mac 1", "Mac 2"};
+  const char* descs[4]  = {"当前电脑", "备用电脑", "Mac Mini", "MacBook Pro"};
+
+  for (int i = 0; i < TOTAL_DEVICES; ++i) {
+    bool isCurrent = (currentDevice == i);
+    uint16_t bgColor     = isCurrent ? 0x0270 : 0x18C3;
+    uint16_t borderColor = isCurrent ? 0x07FF : 0x3186;
+    uint16_t titleColor   = isCurrent ? 0x07FF : TFT_WHITE;
+    uint16_t descColor    = isCurrent ? TFT_WHITE : 0x9CD3;
+
+    canvas.fillRoundRect(cardX[i], cardY[i], cardW, cardH, 10, bgColor);
+    canvas.drawRoundRect(cardX[i], cardY[i], cardW, cardH, 10, borderColor);
+
+    // 主标题 (如 "Win 1", "Mac 1")
+    canvas.setTextColor(titleColor);
+    canvas.setTextSize(2);
+    canvas.drawString(titles[i], cardX[i] + 14, cardY[i] + 12);
+
+    // 描述 (如 "当前电脑", "Mac Mini")
+    canvas.setTextColor(descColor);
+    canvas.setTextSize(1);
+    canvas.drawString(descs[i], cardX[i] + 14, cardY[i] + 40);
+
+    // 状态小徽标
+    if (isCurrent) {
+      canvas.fillRoundRect(cardX[i] + 14, cardY[i] + 62, 70, 18, 4, 0x0320);
+      canvas.setTextColor(0x07E0);
+      canvas.drawString("已连接", cardX[i] + 24, cardY[i] + 65);
+    } else {
+      canvas.setTextColor(0x7BEF);
+      canvas.drawString("轻触切换", cardX[i] + 14, cardY[i] + 65);
+    }
+  }
+
+  // 3. 浮层 Toast (若有提示)
+  uint32_t now = millis();
+  if (now < state.toastUntil && state.toastMsg.length() > 0) {
+    int tw = canvas.textWidth(state.toastMsg) + 24;
+    int tx = (320 - tw) / 2;
+    canvas.fillRoundRect(tx, 96, tw, 36, 18, 0x18C3);
+    canvas.drawRoundRect(tx, 96, tw, 36, 18, 0x07FF);
+    canvas.setTextColor(0x07FF);
+    canvas.setTextSize(1);
+    canvas.drawCenterString(state.toastMsg, 160, 108);
+  }
+}
+
 // 刷新整屏 (通过 PSRAM 双缓冲渲染)
 void renderScreen() {
   uint32_t now = millis();
+
+  // 如果处于设备选择菜单弹窗，优先推画选择面板
+  if (state.isSelectingDevice) {
+    drawDeviceSelectorModal();
+    canvas.pushSprite(0, 0);
+    return;
+  }
+
   canvas.fillScreen(TFT_BLACK);
 
   // 1. 顶栏选项卡 Tab
@@ -802,6 +881,51 @@ void loop() {
     if (tx <= 0) tx = 160; // 兜底中心点
     if (ty <= 0) ty = 110;
 
+    // ── 情况 1: 如果当前正处于「设备选择菜单」弹窗中 ──
+    if (state.isSelectingDevice) {
+      if (!touchLatched) {
+        touchLatched = true;
+
+        // 点击右上角【返回】或顶部标题栏 (ty <= 36)
+        if (ty <= 36) {
+          state.isSelectingDevice = false;
+          renderScreen();
+          return;
+        }
+
+        // 判定 4 张卡片点击 (超大判定区，绝不失手)
+        int selectedDev = -1;
+        if (ty >= 38 && ty <= 126) {
+          if (tx >= 14 && tx <= 154) selectedDev = 0; // Win 1
+          else if (tx >= 166 && tx <= 306) selectedDev = 1; // Win 2
+        } else if (ty >= 134 && ty <= 222) {
+          if (tx >= 14 && tx <= 154) selectedDev = 2; // Mac 1
+          else if (tx >= 166 && tx <= 306) selectedDev = 3; // Mac 2
+        }
+
+        if (selectedDev >= 0) {
+          if (selectedDev == currentDevice) {
+            // 点击的是当前已经在用的设备 -> 直接关闭菜单
+            state.isSelectingDevice = false;
+            showToast(String("保持连接: ") + devLabels[currentDevice], 1200);
+            renderScreen();
+          } else {
+            // 点击了新设备 -> 立即切换至该设备通道！
+            state.isSelectingDevice = false;
+            switchDeviceChannel((uint8_t)selectedDev);
+          }
+          return;
+        } else {
+          // 点击了卡片之外的空白边缘 -> 关闭菜单
+          state.isSelectingDevice = false;
+          renderScreen();
+          return;
+        }
+      }
+      return;
+    }
+
+    // ── 情况 2: 正常工作界面中的长按与点击 ──
     // 1. 长按顶栏「遥控」Tab 1.5 秒：触发当前设备通道重新广播配对
     if (ty <= 54 && tx >= 100 && tx < 198) {
       if (tab2PressStart == 0) tab2PressStart = now;
@@ -816,13 +940,13 @@ void loop() {
       tab2LongTriggered = false;
     }
 
-    // 2. 长按顶栏「翻页」Tab 1.5 秒：多设备快速循环切换 (Win 1 -> Win 2 -> Mac 1 -> Mac 2)
+    // 2. 长按顶栏「翻页」Tab 1.5 秒：唤出「选择连接设备」大菜单，由用户自由选择！
     if (ty <= 54 && tx >= 198) {
       if (tab3PressStart == 0) tab3PressStart = now;
       if (!tab3LongTriggered && (now - tab3PressStart >= 1500)) {
         tab3LongTriggered = true;
-        uint8_t nextDev = (currentDevice + 1) % TOTAL_DEVICES;
-        switchDeviceChannel(nextDev);
+        state.isSelectingDevice = true; // 唤出 4 台设备选择菜单！
+        renderScreen();
         return;
       }
     } else {

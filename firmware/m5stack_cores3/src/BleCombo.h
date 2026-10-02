@@ -61,7 +61,7 @@ static const uint8_t _hidReportDescriptor[] = {
   0x81, 0x02,                    //     INPUT (Data,Var,Abs)
   0x75, 0x05,                    //     REPORT_SIZE (5)
   0x95, 0x01,                    //     REPORT_COUNT (1)
-  0x81, 0x01,                    //     INPUT (Cnst,Ary,Abs)
+  0x81, 0x03,                    //     INPUT (Cnst,Var,Abs)
   0x05, 0x01,                    //     USAGE_PAGE (Generic Desktop)
   0x09, 0x30,                    //     USAGE (X)
   0x09, 0x31,                    //     USAGE (Y)
@@ -136,7 +136,7 @@ struct BleKeyReport {
   uint8_t keys[6];
 };
 
-struct BleMouseReport {
+struct __attribute__((packed)) BleMouseReport {
   uint8_t buttons;
   int8_t x;
   int8_t y;

@@ -1267,7 +1267,7 @@ void loop() {
           if (abs(dy) >= 4) {
             int8_t wheel = (dy < 0) ? 1 : -1;
             if (BleCombo.isConnected()) BleCombo.moveMouse(0, 0, wheel);
-            else Serial.printf("MOUSE:0,0,%d\n", wheel);
+            Serial.printf("MOUSE:0,0,%d\n", wheel);
             state.mouseLastY = ty;
           }
         } else {
@@ -1315,19 +1315,11 @@ void loop() {
             if (moveX != 0 || moveY != 0) {
               if (BleCombo.isConnected()) {
                 BleCombo.moveMouse((int8_t)moveX, (int8_t)moveY, 0);
-              } else {
-                Serial.printf("MOUSE:%d,%d,0\n", moveX, moveY);
               }
+              Serial.printf("MOUSE:%d,%d,0\n", moveX, moveY);
             }
           }
         }
-      }
-
-      // 触控移动时 UI 维持 35ms 刷新，确保光标与触控无任何阻塞
-      static uint32_t lastMouseRenderTime = 0;
-      if (now - lastMouseRenderTime >= 35) {
-        lastMouseRenderTime = now;
-        renderScreen();
       }
       return;
     }
@@ -1672,25 +1664,32 @@ void loop() {
             if (isMacDevice(currentDevice)) {
               BleCombo.pressKey(0, HID_KEY_ESCAPE);
               BleCombo.releaseAllKeys();
-              delay(15);
-              BleCombo.pressKey(KEY_BLE_GUI, 0x1D);
+              delay(20);
+              BleCombo.pressKey(KEY_BLE_GUI, 0x04); // Cmd+A 全选
+              BleCombo.releaseAllKeys();
+              delay(30);
+              BleCombo.pressKey(0, HID_KEY_BACKSPACE); // Backspace 清空
               BleCombo.releaseAllKeys();
             } else {
               if (wasActive) {
                 BleCombo.pressRightAlt();
                 BleCombo.releaseRightAlt();
+                delay(40);
               }
               BleCombo.pressKey(0, HID_KEY_ESCAPE);
               BleCombo.releaseAllKeys();
-              delay(15);
-              BleCombo.pressKey(KEY_BLE_CTRL, 0x1D);
+              delay(20);
+              BleCombo.pressKey(KEY_BLE_CTRL, 0x04); // Ctrl+A 全选
+              BleCombo.releaseAllKeys();
+              delay(30);
+              BleCombo.pressKey(0, HID_KEY_BACKSPACE); // Backspace 清空
               BleCombo.releaseAllKeys();
             }
           }
           if (wasActive) Serial.println("CMD:right_alt");
           Serial.println("CMD:escape");
-          Serial.println("CMD:undo");
-          setEmotion(EMOTION_IDLE, "已取消撤销", 1000);
+          Serial.println("CMD:clear_input");
+          setEmotion(EMOTION_IDLE, "已清空取消", 1000);
           renderScreen();
           return;
         }
@@ -1773,6 +1772,7 @@ void loop() {
       state.mouseTouchStartTime = 0;
       state.mouseVisualX = -1;
       state.mouseVisualY = -1;
+      renderScreen();
     }
     touchLatched = false;
     tab2PressStart = 0;

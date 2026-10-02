@@ -529,7 +529,7 @@ def run_walkie_talkie_daemon():
                                     import ctypes
                                     user32 = ctypes.windll.user32
                                     if dx != 0 or dy != 0:
-                                        user32.mouse_event(0x0001, dx, dy, 0, 0)
+                                        user32.mouse_event(0x0001, ctypes.c_long(dx), ctypes.c_long(dy), 0, 0)
                                     if wheel != 0:
                                         user32.mouse_event(0x0800, 0, 0, wheel * 120, 0)
                             except Exception:
@@ -609,6 +609,27 @@ def run_walkie_talkie_daemon():
                             time.sleep(0.03)
                             ctypes.windll.user32.keybd_event(VK_V, 0, KEYEVENTF_KEYUP, 0)
                             ctypes.windll.user32.keybd_event(VK_CONTROL, 0, KEYEVENTF_KEYUP, 0)
+                        continue
+
+                    elif line == "CMD:clear_input":
+                        print("\n🧹 [CoreS3 硬件指令] 取消录音：全选并清空输入框 (Ctrl+A -> Backspace)...")
+                        if sys.platform == "win32":
+                            import ctypes
+                            VK_CONTROL = 0x11
+                            VK_A = 0x41
+                            VK_BACK = 0x08
+                            KEYEVENTF_KEYUP = 0x0002
+                            # Ctrl + A
+                            ctypes.windll.user32.keybd_event(VK_CONTROL, 0, 0, 0)
+                            ctypes.windll.user32.keybd_event(VK_A, 0, 0, 0)
+                            time.sleep(0.02)
+                            ctypes.windll.user32.keybd_event(VK_A, 0, KEYEVENTF_KEYUP, 0)
+                            ctypes.windll.user32.keybd_event(VK_CONTROL, 0, KEYEVENTF_KEYUP, 0)
+                            time.sleep(0.03)
+                            # Backspace
+                            ctypes.windll.user32.keybd_event(VK_BACK, 0, 0, 0)
+                            time.sleep(0.02)
+                            ctypes.windll.user32.keybd_event(VK_BACK, 0, KEYEVENTF_KEYUP, 0)
                         continue
 
                     elif line == "CMD:undo":

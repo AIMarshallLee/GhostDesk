@@ -535,6 +535,48 @@ def run_walkie_talkie_daemon():
                             user32.keybd_event(VK_MENU, 0, KEYEVENTF_KEYUP, 0)
                         continue
 
+                    elif line == "CMD:copy":
+                        print("\n📋 [CoreS3 快捷台] 复制 Ctrl + C")
+                        if sys.platform == "win32":
+                            import ctypes
+                            VK_CONTROL = 0x11
+                            VK_C = 0x43
+                            KEYEVENTF_KEYUP = 0x0002
+                            ctypes.windll.user32.keybd_event(VK_CONTROL, 0, 0, 0)
+                            ctypes.windll.user32.keybd_event(VK_C, 0, 0, 0)
+                            time.sleep(0.03)
+                            ctypes.windll.user32.keybd_event(VK_C, 0, KEYEVENTF_KEYUP, 0)
+                            ctypes.windll.user32.keybd_event(VK_CONTROL, 0, KEYEVENTF_KEYUP, 0)
+                        continue
+
+                    elif line == "CMD:paste":
+                        print("\n📋 [CoreS3 快捷台] 粘贴 Ctrl + V")
+                        if sys.platform == "win32":
+                            import ctypes
+                            VK_CONTROL = 0x11
+                            VK_V = 0x56
+                            KEYEVENTF_KEYUP = 0x0002
+                            ctypes.windll.user32.keybd_event(VK_CONTROL, 0, 0, 0)
+                            ctypes.windll.user32.keybd_event(VK_V, 0, 0, 0)
+                            time.sleep(0.03)
+                            ctypes.windll.user32.keybd_event(VK_V, 0, KEYEVENTF_KEYUP, 0)
+                            ctypes.windll.user32.keybd_event(VK_CONTROL, 0, KEYEVENTF_KEYUP, 0)
+                        continue
+
+                    elif line == "CMD:undo":
+                        print("\n↩️ [CoreS3 快捷台] 撤销 Ctrl + Z")
+                        if sys.platform == "win32":
+                            import ctypes
+                            VK_CONTROL = 0x11
+                            VK_Z = 0x5A
+                            KEYEVENTF_KEYUP = 0x0002
+                            ctypes.windll.user32.keybd_event(VK_CONTROL, 0, 0, 0)
+                            ctypes.windll.user32.keybd_event(VK_Z, 0, 0, 0)
+                            time.sleep(0.03)
+                            ctypes.windll.user32.keybd_event(VK_Z, 0, KEYEVENTF_KEYUP, 0)
+                            ctypes.windll.user32.keybd_event(VK_CONTROL, 0, KEYEVENTF_KEYUP, 0)
+                        continue
+
                     elif line == "VOICE_START":
                         is_recording = True
                         audio_buffer = bytearray()

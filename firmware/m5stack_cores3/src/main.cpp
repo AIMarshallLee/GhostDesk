@@ -95,9 +95,13 @@ struct SystemState {
   uint32_t btnMediaNextHighlight = 0;
   uint32_t btnMediaMuteHighlight = 0;
   uint32_t btnScShotHighlight = 0;
+  uint32_t btnScEnterHighlight = 0;
+  uint32_t btnScEscHighlight = 0;
   uint32_t btnScLockHighlight = 0;
+  uint32_t btnScCopyHighlight = 0;
+  uint32_t btnScPasteHighlight = 0;
+  uint32_t btnScUndoHighlight = 0;
   uint32_t btnScDeskHighlight = 0;
-  uint32_t btnScSwitchHighlight = 0;
   uint32_t lastUserActionTime = 0;      // 最后一次用户触控操作时间
   bool isDimmed = false;                // 是否处于低功耗微暗屏状态
   bool isScreenOff = false;             // 是否处于彻底熄屏休眠状态
@@ -419,53 +423,91 @@ void drawMediaControlView(uint32_t now) {
 }
 
 // ==========================================
-// 视图 2：系统快捷台 (Stream Deck 风格：截图、锁屏、桌面、切窗口)
+// 视图 2：系统快捷台 (Stream Deck 风格 8 大高频生产力按键闭环)
 // ==========================================
 void drawSystemShortcutsView(uint32_t now) {
-  bool scShotPressed   = (now < state.btnScShotHighlight);
-  bool scLockPressed   = (now < state.btnScLockHighlight);
-  bool scDeskPressed   = (now < state.btnScDeskHighlight);
-  bool scSwitchPressed = (now < state.btnScSwitchHighlight);
+  bool scShotPressed  = (now < state.btnScShotHighlight);
+  bool scEnterPressed = (now < state.btnScEnterHighlight);
+  bool scEscPressed   = (now < state.btnScEscHighlight);
+  bool scLockPressed  = (now < state.btnScLockHighlight);
+  bool scCopyPressed  = (now < state.btnScCopyHighlight);
+  bool scPastePressed = (now < state.btnScPasteHighlight);
+  bool scUndoPressed  = (now < state.btnScUndoHighlight);
+  bool scDeskPressed  = (now < state.btnScDeskHighlight);
 
-  // 卡片 1: 微信截图 (X: 12, Y: 56, W: 142, H: 82)
-  canvas.fillRoundRect(12, 56, 142, 82, 12, scShotPressed ? 0x2965 : 0x18C3);
-  canvas.drawRoundRect(12, 56, 142, 82, 12, scShotPressed ? 0x9CDF : 0x3186);
+  // ── 第一行 (Y: 58, H: 80)：控制与截图闭环 ──
+  // [0, 0] 微信截图 (X: 6, Y: 58, W: 74, H: 80)
+  canvas.fillRoundRect(6, 58, 74, 80, 8, scShotPressed ? 0x2965 : 0x18C3);
+  canvas.drawRoundRect(6, 58, 74, 80, 8, scShotPressed ? 0x9CDF : 0x3186);
   canvas.setTextColor(scShotPressed ? TFT_WHITE : 0x07FF);
   canvas.setTextSize(1);
-  canvas.drawString("微信截图", 26, 74);
-  canvas.setTextColor(0x9CD3);
-  canvas.setTextSize(1);
-  canvas.drawString("Ctrl + J", 26, 104);
+  canvas.drawCenterString("截图", 43, 76);
+  canvas.setTextColor(0x7BEF);
+  canvas.drawCenterString("Ctrl+J", 43, 104);
 
-  // 卡片 2: 锁屏 (X: 166, Y: 56, W: 142, H: 82)
-  canvas.fillRoundRect(166, 56, 142, 82, 12, scLockPressed ? 0x3980 : 0x18C3);
-  canvas.drawRoundRect(166, 56, 142, 82, 12, scLockPressed ? 0xFD20 : 0x3186);
+  // [0, 1] 确定 Enter (X: 84, Y: 58, W: 74, H: 80) - 截图确认/发送神器！
+  canvas.fillRoundRect(84, 58, 74, 80, 8, scEnterPressed ? 0x0320 : 0x18C3);
+  canvas.drawRoundRect(84, 58, 74, 80, 8, scEnterPressed ? 0x07E0 : 0x3186);
+  canvas.setTextColor(scEnterPressed ? TFT_WHITE : 0x07E0);
+  canvas.setTextSize(1);
+  canvas.drawCenterString("确定", 121, 76);
+  canvas.setTextColor(0x7BEF);
+  canvas.drawCenterString("Enter", 121, 104);
+
+  // [0, 2] 取消 Esc (X: 162, Y: 58, W: 74, H: 80) - 截图截偏/误触秒退！
+  canvas.fillRoundRect(162, 58, 74, 80, 8, scEscPressed ? 0x3800 : 0x18C3);
+  canvas.drawRoundRect(162, 58, 74, 80, 8, scEscPressed ? 0xF800 : 0x3186);
+  canvas.setTextColor(scEscPressed ? TFT_WHITE : 0xF880);
+  canvas.setTextSize(1);
+  canvas.drawCenterString("取消", 199, 76);
+  canvas.setTextColor(0x7BEF);
+  canvas.drawCenterString("Esc", 199, 104);
+
+  // [0, 3] 锁屏 (X: 240, Y: 58, W: 74, H: 80)
+  canvas.fillRoundRect(240, 58, 74, 80, 8, scLockPressed ? 0x3980 : 0x18C3);
+  canvas.drawRoundRect(240, 58, 74, 80, 8, scLockPressed ? 0xFD20 : 0x3186);
   canvas.setTextColor(scLockPressed ? TFT_WHITE : 0xFD20);
-  canvas.setTextSize(2);
-  canvas.drawString("锁屏", 180, 72);
-  canvas.setTextColor(0x9CD3);
   canvas.setTextSize(1);
-  canvas.drawString("快速锁屏保密", 180, 104);
+  canvas.drawCenterString("锁屏", 277, 76);
+  canvas.setTextColor(0x7BEF);
+  canvas.drawCenterString("Win+L", 277, 104);
 
-  // 卡片 3: 显示桌面 (X: 12, Y: 146, W: 142, H: 82)
-  canvas.fillRoundRect(12, 146, 142, 82, 12, scDeskPressed ? 0x0320 : 0x18C3);
-  canvas.drawRoundRect(12, 146, 142, 82, 12, scDeskPressed ? 0x07E0 : 0x3186);
+  // ── 第二行 (Y: 144, H: 80)：高频生产力编辑与桌面 ──
+  // [1, 0] 复制 (X: 6, Y: 144, W: 74, H: 80)
+  canvas.fillRoundRect(6, 144, 74, 80, 8, scCopyPressed ? 0x0270 : 0x18C3);
+  canvas.drawRoundRect(6, 144, 74, 80, 8, scCopyPressed ? 0x07FF : 0x3186);
+  canvas.setTextColor(scCopyPressed ? TFT_WHITE : 0x07FF);
+  canvas.setTextSize(1);
+  canvas.drawCenterString("复制", 43, 162);
+  canvas.setTextColor(0x7BEF);
+  canvas.drawCenterString("Ctrl+C", 43, 190);
+
+  // [1, 1] 粘贴 (X: 84, Y: 144, W: 74, H: 80)
+  canvas.fillRoundRect(84, 144, 74, 80, 8, scPastePressed ? 0x39C0 : 0x18C3);
+  canvas.drawRoundRect(84, 144, 74, 80, 8, scPastePressed ? 0xFFE0 : 0x3186);
+  canvas.setTextColor(scPastePressed ? TFT_WHITE : 0xFFE0);
+  canvas.setTextSize(1);
+  canvas.drawCenterString("粘贴", 121, 162);
+  canvas.setTextColor(0x7BEF);
+  canvas.drawCenterString("Ctrl+V", 121, 190);
+
+  // [1, 2] 撤销 (X: 162, Y: 144, W: 74, H: 80)
+  canvas.fillRoundRect(162, 144, 74, 80, 8, scUndoPressed ? 0x2124 : 0x18C3);
+  canvas.drawRoundRect(162, 144, 74, 80, 8, scUndoPressed ? 0xD69A : 0x3186);
+  canvas.setTextColor(scUndoPressed ? TFT_WHITE : 0xD69A);
+  canvas.setTextSize(1);
+  canvas.drawCenterString("撤销", 199, 162);
+  canvas.setTextColor(0x7BEF);
+  canvas.drawCenterString("Ctrl+Z", 199, 190);
+
+  // [1, 3] 桌面 (X: 240, Y: 144, W: 74, H: 80)
+  canvas.fillRoundRect(240, 144, 74, 80, 8, scDeskPressed ? 0x0320 : 0x18C3);
+  canvas.drawRoundRect(240, 144, 74, 80, 8, scDeskPressed ? 0x07E0 : 0x3186);
   canvas.setTextColor(scDeskPressed ? TFT_WHITE : 0x07E0);
   canvas.setTextSize(1);
-  canvas.drawString("显示桌面", 26, 164);
-  canvas.setTextColor(0x9CD3);
-  canvas.setTextSize(1);
-  canvas.drawString("一键显隐桌面", 26, 194);
-
-  // 卡片 4: 切窗口 (X: 166, Y: 146, W: 142, H: 82)
-  canvas.fillRoundRect(166, 146, 142, 82, 12, scSwitchPressed ? 0x39C0 : 0x18C3);
-  canvas.drawRoundRect(166, 146, 142, 82, 12, scSwitchPressed ? 0xFFE0 : 0x3186);
-  canvas.setTextColor(scSwitchPressed ? TFT_WHITE : 0xFFE0);
-  canvas.setTextSize(2);
-  canvas.drawString("切窗口", 180, 162);
-  canvas.setTextColor(0x9CD3);
-  canvas.setTextSize(1);
-  canvas.drawString("轮换应用窗口", 180, 194);
+  canvas.drawCenterString("桌面", 277, 162);
+  canvas.setTextColor(0x7BEF);
+  canvas.drawCenterString("Win+D", 277, 190);
 }
 
 // ==========================================
@@ -1001,9 +1043,9 @@ void loop() {
   M5.update();
   uint32_t now = millis();
 
-  // 1. 极致顺滑、100% 灵敏的触控捕获 (采用物理按下状态锁，彻底防止漏检)
+  // 1. 极致顺滑、100% 灵敏的触控捕获 (支持瞬时短点与按下，彻底防止漏检)
   auto touch = M5.Touch.getDetail();
-  bool isTouching = touch.isPressed();
+  bool isTouching = touch.isPressed() || touch.wasPressed() || touch.wasClicked();
   static bool touchLatched = false; // 严格单次按下锁
   static uint32_t tab2PressStart = 0;
   static bool tab2LongTriggered = false;
@@ -1260,66 +1302,105 @@ void loop() {
         renderScreen();
         return;
       } else if (currentMode == MODE_SYSTEM_SHORTCUTS) {
-        // ── Tab 3 形态 B: 系统快捷台 (Stream Deck 4大卡片) ──
-        if (tx < 160 && ty < 140) {
-          // 卡片 1: 微信截图 (Ctrl + J)
-          state.btnScShotHighlight = now + 250;
-          if (BleCombo.isConnected()) {
-            if (isMacDevice(currentDevice)) {
-              BleCombo.pressKey(KEY_BLE_GUI | KEY_BLE_SHIFT, 0x21); // Mac: Cmd+Shift+4
-            } else {
-              BleCombo.pressKey(KEY_BLE_CTRL, 0x0D); // Windows: Ctrl + J (微信默认截图快捷键)
+        // ── Tab 3 形态 B: 系统快捷台 (Stream Deck 8大高频生产力按键) ──
+        if (ty < 138) {
+          // ── 第一行 (Y: 58 ~ 138)：截图与确认闭环 ──
+          if (tx < 80) {
+            // [0, 0] 微信截图 (Ctrl + J)
+            state.btnScShotHighlight = now + 250;
+            if (BleCombo.isConnected()) {
+              if (isMacDevice(currentDevice)) {
+                BleCombo.pressKey(KEY_BLE_GUI | KEY_BLE_SHIFT, 0x21); // Mac: Cmd+Shift+4
+              } else {
+                BleCombo.pressKey(KEY_BLE_CTRL, 0x0D); // Win: Ctrl + J
+              }
+              BleCombo.releaseAllKeys();
             }
-            BleCombo.releaseAllKeys();
-          }
-          Serial.println("CMD:screenshot");
-          showToast("已呼出微信截图 (Ctrl+J)", 1200);
-        } else if (tx >= 160 && ty < 140) {
-          // 卡片 2: 锁屏 (Win+L / Cmd+Ctrl+Q)
-          state.btnScLockHighlight = now + 250;
-          if (BleCombo.isConnected()) {
-            if (isMacDevice(currentDevice)) {
-              BleCombo.pressKey(KEY_BLE_GUI | KEY_BLE_CTRL, 0x14); // Cmd+Ctrl+Q
-            } else {
-              BleCombo.pressKey(KEY_BLE_GUI, 0x0F); // Win+L
+            Serial.println("CMD:screenshot");
+            showToast("微信截图 (Ctrl+J)", 1000);
+          } else if (tx >= 80 && tx < 158) {
+            // [0, 1] 确定 Enter (截图确认/发送神器！)
+            state.btnScEnterHighlight = now + 250;
+            if (BleCombo.isConnected()) {
+              BleCombo.pressKey(0, BLE_KEY_RETURN);
+              BleCombo.releaseAllKeys();
             }
-            BleCombo.releaseAllKeys();
-          }
-          Serial.println("CMD:lock");
-          showToast("已执行电脑锁屏", 1200);
-        } else if (tx < 160 && ty >= 140) {
-          // 卡片 3: 显示桌面 (Win+D / F11 / Shell API)
-          state.btnScDeskHighlight = now + 250;
-          if (BleCombo.isConnected()) {
-            if (isMacDevice(currentDevice)) {
-              BleCombo.pressKey(0, 0x44); // F11 显示桌面
-            } else {
-              BleCombo.pressKey(KEY_BLE_GUI, 0x07); // Win+D 显示桌面
+            Serial.println("CMD:enter");
+            showToast("确定 Enter", 1000);
+          } else if (tx >= 158 && tx < 236) {
+            // [0, 2] 取消 Esc (截图截偏/误触秒退！)
+            state.btnScEscHighlight = now + 250;
+            if (BleCombo.isConnected()) {
+              BleCombo.pressKey(0, HID_KEY_ESCAPE);
+              BleCombo.releaseAllKeys();
             }
-            BleCombo.releaseAllKeys();
+            Serial.println("CMD:escape");
+            showToast("取消 Esc", 1000);
+          } else {
+            // [0, 3] 锁屏 (Win+L / Cmd+Ctrl+Q)
+            state.btnScLockHighlight = now + 250;
+            if (BleCombo.isConnected()) {
+              if (isMacDevice(currentDevice)) {
+                BleCombo.pressKey(KEY_BLE_GUI | KEY_BLE_CTRL, 0x14); // Cmd+Ctrl+Q
+              } else {
+                BleCombo.pressKey(KEY_BLE_GUI, 0x0F); // Win+L
+              }
+              BleCombo.releaseAllKeys();
+            }
+            Serial.println("CMD:lock");
+            showToast("电脑锁屏 (Win+L)", 1000);
           }
-          Serial.println("CMD:desktop");
-          showToast("一键显隐桌面", 1200);
         } else {
-          // 卡片 4: 切窗口 (Alt+Esc / Cmd+Tab / Next Window)
-          state.btnScSwitchHighlight = now + 250;
-          if (BleCombo.isConnected()) {
-            if (isMacDevice(currentDevice)) {
-              BleCombo.pressKey(KEY_BLE_GUI, HID_KEY_TAB); // Cmd+Tab
-            } else {
-              BleCombo.pressKey(KEY_BLE_ALT, HID_KEY_ESCAPE); // Alt+Esc (瞬间置换下一活动窗口)
+          // ── 第二行 (Y: 138 ~ 224)：编辑与显隐桌面 ──
+          uint8_t mod = isMacDevice(currentDevice) ? KEY_BLE_GUI : KEY_BLE_CTRL;
+          if (tx < 80) {
+            // [1, 0] 复制 (Ctrl+C / Cmd+C)
+            state.btnScCopyHighlight = now + 250;
+            if (BleCombo.isConnected()) {
+              BleCombo.pressKey(mod, 0x06); // 'c' = 0x06
+              BleCombo.releaseAllKeys();
             }
-            BleCombo.releaseAllKeys();
+            Serial.println("CMD:copy");
+            showToast("复制 (Ctrl+C)", 1000);
+          } else if (tx >= 80 && tx < 158) {
+            // [1, 1] 粘贴 (Ctrl+V / Cmd+V)
+            state.btnScPasteHighlight = now + 250;
+            if (BleCombo.isConnected()) {
+              BleCombo.pressKey(mod, 0x19); // 'v' = 0x19
+              BleCombo.releaseAllKeys();
+            }
+            Serial.println("CMD:paste");
+            showToast("粘贴 (Ctrl+V)", 1000);
+          } else if (tx >= 158 && tx < 236) {
+            // [1, 2] 撤销 (Ctrl+Z / Cmd+Z)
+            state.btnScUndoHighlight = now + 250;
+            if (BleCombo.isConnected()) {
+              BleCombo.pressKey(mod, 0x1D); // 'z' = 0x1D
+              BleCombo.releaseAllKeys();
+            }
+            Serial.println("CMD:undo");
+            showToast("撤销 (Ctrl+Z)", 1000);
+          } else {
+            // [1, 3] 桌面 (Win+D / F11)
+            state.btnScDeskHighlight = now + 250;
+            if (BleCombo.isConnected()) {
+              if (isMacDevice(currentDevice)) {
+                BleCombo.pressKey(0, 0x44); // F11
+              } else {
+                BleCombo.pressKey(KEY_BLE_GUI, 0x07); // Win+D
+              }
+              BleCombo.releaseAllKeys();
+            }
+            Serial.println("CMD:desktop");
+            showToast("显隐桌面 (Win+D)", 1000);
           }
-          Serial.println("CMD:switch_window");
-          showToast("轮换应用窗口", 1200);
         }
         renderScreen();
         return;
       } else if (currentMode == MODE_CORES3_MIC) {
         // ── Tab 1: 云端语音模式 ──
-        if (ty >= 170 && tx < 150) {
-          // 左下角：无条件【取消】(点亮按键高亮变色 250ms)
+        if (ty >= 150 && tx < 140) {
+          // 左下角超大区域：无条件【取消】(点亮按键高亮变色 250ms)
           state.btnCancelHighlightUntil = now + 250;
           state.sentNoticeUntil = 0; // 彻底清除任何已发送/未发送状态，绝无任何多余框框！
           state.sentNoticeState = 0;
@@ -1328,8 +1409,8 @@ void loop() {
           } else {
             setEmotion(EMOTION_IDLE, "已取消", 800);
           }
-        } else if (ty >= 170 && tx >= 150) {
-          // 右下角：【完成】发送 (点亮按键高亮变色 250ms)
+        } else if (ty >= 150 && tx >= 140) {
+          // 右下角超大区域：【完成】发送 (点亮按键高亮变色 250ms)
           state.btnSendHighlightUntil = now + 250;
           if (state.isRecordingVoice) {
             stopVoiceRecording();
@@ -1337,7 +1418,7 @@ void loop() {
             startVoiceRecording();
           }
         } else {
-          // 上半部分麦克风 (Y < 170 整个超大区域)：点击切换录音/发送
+          // 上半部分麦克风 (Y < 150 整个超大区域)：点击切换录音/发送
           if (state.isRecordingVoice) {
             stopVoiceRecording();
           } else {
@@ -1348,8 +1429,8 @@ void loop() {
         return;
       } else {
         // ── Tab 1 子模式: 电脑遥控模式 ──
-        // 1. 左下大区域【取消】判定区 (ty >= 170 && tx < 150)
-        if (ty >= 170 && tx < 150) {
+        // 1. 左下超大区域【取消】判定区 (ty >= 150 && tx < 140)
+        if (ty >= 150 && tx < 140) {
           state.btnCancelHighlightUntil = now + 250; // 点亮按键高亮变色 250ms
           state.sentNoticeUntil = 0; // 彻底清除任何状态，绝无任何错位绿框！
           state.sentNoticeState = 0;
@@ -1386,22 +1467,31 @@ void loop() {
           return;
         }
 
-        // 2. 右下大区域【发送】判定区 (ty >= 170 && tx >= 150)
-        if (ty >= 170 && tx >= 150) {
+        // 2. 右下超大区域【发送】判定区 (ty >= 150 && tx >= 140)
+        if (ty >= 150 && tx >= 140) {
           state.btnSendHighlightUntil = now + 250;
           state.pendingReturnTime = 0;
+          bool wasActive = state.isBleVoiceActive;
           state.isBleVoiceActive = false;
+
           if (BleCombo.isConnected()) {
+            if (wasActive && !isMacDevice(currentDevice)) {
+              // 若录音中直接点发送，先闭麦转写，再敲回车！
+              BleCombo.pressRightAlt();
+              BleCombo.releaseRightAlt();
+              delay(30);
+            }
             BleCombo.pressKey(0, BLE_KEY_RETURN);
             BleCombo.releaseAllKeys();
           }
+          if (wasActive) Serial.println("CMD:right_alt");
           Serial.println("CMD:enter");
           state.cmdEnterSentTime = now;
           renderScreen();
           return;
         }
 
-        // 3. 上半部分巨大麦克风区域 (ty < 170)：开关语音输入 / 提前发送
+        // 3. 上半部分巨大麦克风区域 (ty < 150)：开关语音输入 / 提前发送
         if (state.pendingReturnTime > 0) {
           state.pendingReturnTime = 0;
           if (BleCombo.isConnected()) {

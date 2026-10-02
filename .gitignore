@@ -1,4 +1,4 @@
-﻿# Dependencies
+# Dependencies
 node_modules/
 
 # Build artifacts
@@ -36,3 +36,6 @@ scratch/
 Thumbs.db
 .vscode/
 .idea/
+.pio/
+main.cjs
+FlowDesk-win32-x64/

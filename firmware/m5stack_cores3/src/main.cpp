@@ -9,33 +9,33 @@
 #define FIRMWARE_VERSION "1.3.0"
 #define BOARD_NAME "m5stack-cores3"
 
-// 多设备切换枚举 (Win 1, Win 2, Mac 1, Mac 2)
+// 多设备切换枚举 (Marshall, AiMarshall, MacMini, MacPro)
 enum BleDeviceChannel {
-  DEVICE_WIN1 = 0, // Win 1: 当前电脑
-  DEVICE_WIN2 = 1, // Win 2: 备用电脑
-  DEVICE_MAC1 = 2, // Mac 1: Mac Mini
-  DEVICE_MAC2 = 3  // Mac 2: MacBook Pro (2015)
+  DEVICE_MARSHALL   = 0, // Marshall: 当前电脑 (Win 1)
+  DEVICE_AIMARSHALL = 1, // AiMarshall: 备用电脑 (Win 2)
+  DEVICE_MACMINI    = 2, // MacMini: Mac Mini (Mac 1)
+  DEVICE_MACPRO     = 3  // MacPro: MacBook Pro 2015 (Mac 2)
 };
 #define TOTAL_DEVICES 4
 uint8_t currentDevice = 0;
 
-static const char* devLabels[] = {"Win 1", "Win 2", "Mac 1", "Mac 2"};
-static const char* bleNames[]  = {"FlowDesk Win 1", "FlowDesk Win 2", "FlowDesk Mac 1", "FlowDesk Mac 2"};
+static const char* devLabels[] = {"Marshall", "AiMarshall", "MacMini", "MacPro"};
+static const char* bleNames[]  = {"FlowDesk Marshall", "FlowDesk AiMarshall", "FlowDesk MacMini", "FlowDesk MacPro"};
 static const char* devToastNames[] = {
-  "切换设备: Win 1 (当前电脑)",
-  "切换设备: Win 2 (备用电脑)",
-  "切换设备: Mac 1 (Mac Mini)",
-  "切换设备: Mac 2 (MacBook Pro)"
+  "切换设备: Marshall (当前电脑)",
+  "切换设备: AiMarshall (备用电脑)",
+  "切换设备: MacMini",
+  "切换设备: MacPro (MacBook Pro)"
 };
 static const char* devGreetingNames[] = {
-  "已就绪: Win 1 (当前电脑)",
-  "已就绪: Win 2 (备用电脑)",
-  "已就绪: Mac 1 (Mac Mini)",
-  "已就绪: Mac 2 (MacBook Pro)"
+  "已就绪: Marshall (当前电脑)",
+  "已就绪: AiMarshall (备用电脑)",
+  "已就绪: MacMini",
+  "已就绪: MacPro (MacBook Pro)"
 };
 
 inline bool isMacDevice(uint8_t dev) {
-  return (dev == DEVICE_MAC1 || dev == DEVICE_MAC2);
+  return (dev == DEVICE_MACMINI || dev == DEVICE_MACPRO);
 }
 
 // PSRAM 双缓冲画布 (320x240，零闪烁高帧率)
@@ -508,8 +508,7 @@ void drawDeviceSelectorModal() {
   const int cardW = 140;
   const int cardH = 88;
 
-  const char* titles[4] = {"Win 1", "Win 2", "Mac 1", "Mac 2"};
-  const char* descs[4]  = {"当前电脑", "备用电脑", "Mac Mini", "MacBook Pro"};
+  const char* descs[4] = {"当前电脑", "备用电脑", "Mac Mini", "MacBook Pro"};
 
   for (int i = 0; i < TOTAL_DEVICES; ++i) {
     bool isCurrent = (currentDevice == i);
@@ -521,24 +520,29 @@ void drawDeviceSelectorModal() {
     canvas.fillRoundRect(cardX[i], cardY[i], cardW, cardH, 10, bgColor);
     canvas.drawRoundRect(cardX[i], cardY[i], cardW, cardH, 10, borderColor);
 
-    // 主标题 (如 "Win 1", "Mac 1")
+    // 主标题 (如 "Marshall", "AiMarshall", "MacMini", "MacPro")
     canvas.setTextColor(titleColor);
-    canvas.setTextSize(2);
-    canvas.drawString(titles[i], cardX[i] + 14, cardY[i] + 12);
+    if (strlen(devLabels[i]) >= 9) {
+      canvas.setTextSize(1);
+      canvas.drawString(devLabels[i], cardX[i] + 12, cardY[i] + 16);
+    } else {
+      canvas.setTextSize(2);
+      canvas.drawString(devLabels[i], cardX[i] + 12, cardY[i] + 12);
+    }
 
     // 描述 (如 "当前电脑", "Mac Mini")
     canvas.setTextColor(descColor);
     canvas.setTextSize(1);
-    canvas.drawString(descs[i], cardX[i] + 14, cardY[i] + 40);
+    canvas.drawString(descs[i], cardX[i] + 12, cardY[i] + 40);
 
     // 状态小徽标
     if (isCurrent) {
-      canvas.fillRoundRect(cardX[i] + 14, cardY[i] + 62, 70, 18, 4, 0x0320);
+      canvas.fillRoundRect(cardX[i] + 12, cardY[i] + 62, 70, 18, 4, 0x0320);
       canvas.setTextColor(0x07E0);
-      canvas.drawString("已连接", cardX[i] + 24, cardY[i] + 65);
+      canvas.drawString("已连接", cardX[i] + 22, cardY[i] + 65);
     } else {
       canvas.setTextColor(0x7BEF);
-      canvas.drawString("轻触切换", cardX[i] + 14, cardY[i] + 65);
+      canvas.drawString("轻触切换", cardX[i] + 12, cardY[i] + 65);
     }
   }
 

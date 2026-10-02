@@ -9,13 +9,34 @@
 #define FIRMWARE_VERSION "1.3.0"
 #define BOARD_NAME "m5stack-cores3"
 
-// 3 台多设备切换枚举
+// 多设备切换枚举 (Win 1, Win 2, Mac 1, Mac 2)
 enum BleDeviceChannel {
-  DEVICE_WIN1 = 0, // Win 1 (Windows 主机)
-  DEVICE_WIN2 = 1, // Win 2 (Windows 备机)
-  DEVICE_MAC  = 2  // Mac (Mac Mini)
+  DEVICE_WIN1 = 0, // Win 1: 当前电脑
+  DEVICE_WIN2 = 1, // Win 2: 备用电脑
+  DEVICE_MAC1 = 2, // Mac 1: Mac Mini
+  DEVICE_MAC2 = 3  // Mac 2: MacBook Pro (2015)
 };
+#define TOTAL_DEVICES 4
 uint8_t currentDevice = 0;
+
+static const char* devLabels[] = {"Win 1", "Win 2", "Mac 1", "Mac 2"};
+static const char* bleNames[]  = {"FlowDesk Win 1", "FlowDesk Win 2", "FlowDesk Mac 1", "FlowDesk Mac 2"};
+static const char* devToastNames[] = {
+  "切换设备: Win 1 (当前电脑)",
+  "切换设备: Win 2 (备用电脑)",
+  "切换设备: Mac 1 (Mac Mini)",
+  "切换设备: Mac 2 (MacBook Pro)"
+};
+static const char* devGreetingNames[] = {
+  "已就绪: Win 1 (当前电脑)",
+  "已就绪: Win 2 (备用电脑)",
+  "已就绪: Mac 1 (Mac Mini)",
+  "已就绪: Mac 2 (MacBook Pro)"
+};
+
+inline bool isMacDevice(uint8_t dev) {
+  return (dev == DEVICE_MAC1 || dev == DEVICE_MAC2);
+}
 
 // PSRAM 双缓冲画布 (320x240，零闪烁高帧率)
 static M5Canvas canvas(&M5.Display);
@@ -104,14 +125,13 @@ void setEmotion(BuddyEmotion emo, const String& msg, uint32_t durationMs = 3000)
 void renderScreen();
 
 void switchDeviceChannel(uint8_t targetDevice) {
-  targetDevice = targetDevice % 3;
+  targetDevice = targetDevice % TOTAL_DEVICES;
   Preferences p;
   p.begin("flowdesk", false);
   p.putUChar("device", targetDevice);
   p.end();
 
-  const char* targetNames[] = {"Win 1 (Windows主机)", "Win 2 (Windows备机)", "Mac Mini"};
-  showToast(String("3台设备切换: ") + targetNames[targetDevice], 2500);
+  showToast(devToastNames[targetDevice], 2500);
   renderScreen();
   delay(500);
   esp_restart();
@@ -308,8 +328,6 @@ void drawAppleCutePet(int cx, int cy, BuddyEmotion emotion, int blink) {
 // 顶栏：满屏超大三大选项卡 Tab [🎙️ 云端] [⌨️ 遥控] [📑 翻页] + 苹果风竖直微电量柱
 // ==========================================
 void drawDynamicIsland() {
-  const char* devLabels[] = {"Win1", "Win2", "Mac"};
-
   // Tab 1: 云端语音 (X: 4 ~ 98, 宽 94, 高 40)
   if (currentMode == MODE_CORES3_MIC) {
     canvas.fillRoundRect(4, 5, 94, 40, 8, 0x0317);
@@ -727,14 +745,14 @@ void setup() {
     0
   );
 
-  // 读取存储的设备通道 (0: Win1, 1: Win2, 2: Mac)
+  // 读取存储的设备通道 (0: Win 1, 1: Win 2, 2: Mac 1, 3: Mac 2)
   Preferences p;
   p.begin("flowdesk", false);
   currentDevice = p.getUChar("device", 0);
   p.end();
-  if (currentDevice > 2) currentDevice = 0;
+  if (currentDevice >= TOTAL_DEVICES) currentDevice = 0;
 
-  // 为 3 台设备配置独立的物理蓝牙 MAC 地址，彻底杜绝串台与设备抢占
+  // 为 4 台设备配置独立的物理蓝牙 MAC 地址，彻底杜绝串台与设备抢占
   uint8_t baseMac[6];
   if (esp_read_mac(baseMac, ESP_MAC_BT) == ESP_OK) {
     baseMac[5] = (baseMac[5] & 0xFC) | currentDevice;
@@ -742,7 +760,6 @@ void setup() {
   }
 
   // 原生免驱 BLE 蓝牙 HID 键盘初始化 (按照当前通道独立广播设备名)
-  const char* bleNames[] = {"FlowDesk Win1", "FlowDesk Win2", "FlowDesk Mac"};
   BleCombo.begin(bleNames[currentDevice]);
 
   nextBlinkTime = millis() + 2000;
@@ -750,8 +767,7 @@ void setup() {
   state.lastUserActionTime = millis();
   state.cachedBattery = M5.Power.getBatteryLevel();
 
-  const char* devGreeting[] = {"已就绪: Win 1 (Windows主机)", "已就绪: Win 2 (Windows备机)", "已就绪: Mac Mini"};
-  showToast(devGreeting[currentDevice], 1800);
+  showToast(devGreetingNames[currentDevice], 1800);
   renderScreen();
 }
 
@@ -800,12 +816,12 @@ void loop() {
       tab2LongTriggered = false;
     }
 
-    // 2. 长按顶栏「翻页」Tab 1.5 秒：3 台设备快速循环切换 (Win 1 -> Win 2 -> Mac)
+    // 2. 长按顶栏「翻页」Tab 1.5 秒：多设备快速循环切换 (Win 1 -> Win 2 -> Mac 1 -> Mac 2)
     if (ty <= 54 && tx >= 198) {
       if (tab3PressStart == 0) tab3PressStart = now;
       if (!tab3LongTriggered && (now - tab3PressStart >= 1500)) {
         tab3LongTriggered = true;
-        uint8_t nextDev = (currentDevice + 1) % 3;
+        uint8_t nextDev = (currentDevice + 1) % TOTAL_DEVICES;
         switchDeviceChannel(nextDev);
         return;
       }
@@ -906,8 +922,8 @@ void loop() {
           state.pendingReturnTime = 0; // 彻底取消自动回车
 
           if (BleCombo.isConnected()) {
-            if (currentDevice == DEVICE_MAC) {
-              // ── Mac Mini 模式: 原生 macOS 撤销 (Escape + Cmd+Z) ──
+            if (isMacDevice(currentDevice)) {
+              // ── Mac 模式 (Mac 1: Mac Mini / Mac 2: MacBook Pro): 原生 macOS 撤销 (Escape + Cmd+Z) ──
               BleCombo.pressKey(0, HID_KEY_ESCAPE);
               BleCombo.releaseAllKeys();
               delay(15);

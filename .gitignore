@@ -3,6 +3,8 @@ node_modules/
 
 # Build artifacts
 dist/
+build/
+releases/
 desktop-build/
 release/
 *.log

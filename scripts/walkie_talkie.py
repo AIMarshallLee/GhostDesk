@@ -196,24 +196,63 @@ def recognize_speech(pcm_bytes: bytes, wav_bytes: bytes) -> str:
 
 
 def ensure_coding_window_focused():
-    """自动将正在使用的代码或AI对话窗口聚焦到前台，突破 Windows 前台聚焦限制"""
-    if sys.platform != "win32":
-        return True
+    """自动将正在使用的代码或AI对话窗口聚焦到前台，突破 Windows & macOS 前台聚焦限制"""
+    priority_apps_win = ["antigravity", "vscode", "terminal", "claude", "chatgpt"]
+    priority_apps_mac = ["Antigravity", "Visual Studio Code", "Cursor", "Claude", "Terminal", "iTerm2"]
 
-    import ctypes
-    cur_fg = ctypes.windll.user32.GetForegroundWindow()
-
-    # 优先查找目前运行的 AI/代码开发应用窗口
-    priority_apps = ["antigravity", "vscode", "terminal", "claude", "chatgpt"]
-    for app_key in priority_apps:
-        w = DesktopController.find_app_window(app_key)
-        if w:
-            if cur_fg == w["hwnd"]:
-                return True # 已经在前台聚焦，0 延迟跳过！
-            activate_window_win32(w["hwnd"])
-            time.sleep(0.08)
-            return True
+    if sys.platform == "win32":
+        import ctypes
+        cur_fg = ctypes.windll.user32.GetForegroundWindow()
+        for app_key in priority_apps_win:
+            w = DesktopController.find_app_window(app_key)
+            if w:
+                if cur_fg == w["hwnd"]:
+                    return True # 已经在前台聚焦，0 延迟跳过！
+                activate_window_win32(w["hwnd"])
+                time.sleep(0.08)
+                return True
+    elif sys.platform == "darwin":
+        for app_name in priority_apps_mac:
+            cmd = f'''osascript -e '
+            tell application "System Events"
+                if (exists (processes where name is "{app_name}")) then
+                    tell application "{app_name}" to activate
+                    return "OK"
+                end if
+            end tell' 2>/dev/null'''
+            res = os.popen(cmd).read().strip()
+            if "OK" in res:
+                time.sleep(0.08)
+                return True
     return False
+
+
+def send_key_combo_cross_platform(win_vk_ctrl, win_vk_key, mac_key_char=None, mac_key_code=None, mac_mods=None):
+    """跨平台通用按键组合模拟 (Windows ctypes 硬件级 + macOS AppleScript 原生)"""
+    if sys.platform == "win32":
+        import ctypes
+        KEYEVENTF_KEYUP = 0x0002
+        if win_vk_ctrl:
+            ctypes.windll.user32.keybd_event(win_vk_ctrl, 0, 0, 0)
+        ctypes.windll.user32.keybd_event(win_vk_key, 0, 0, 0)
+        time.sleep(0.03)
+        ctypes.windll.user32.keybd_event(win_vk_key, 0, KEYEVENTF_KEYUP, 0)
+        if win_vk_ctrl:
+            ctypes.windll.user32.keybd_event(win_vk_ctrl, 0, KEYEVENTF_KEYUP, 0)
+    elif sys.platform == "darwin":
+        mods = ""
+        if mac_mods:
+            if isinstance(mac_mods, list):
+                mods = " using {" + ", ".join(f"{m} down" for m in mac_mods) + "}"
+            else:
+                mods = f" using {mac_mods} down"
+        if mac_key_code is not None:
+            cmd = f'tell application "System Events" to key code {mac_key_code}{mods}'
+        elif mac_key_char is not None:
+            cmd = f'tell application "System Events" to keystroke "{mac_key_char}"{mods}'
+        else:
+            return
+        os.system(f"osascript -e '{cmd}' 2>/dev/null")
 
 
 def inject_prompt_to_active_window(text: str, auto_enter: bool = True):
@@ -228,7 +267,7 @@ def inject_prompt_to_active_window(text: str, auto_enter: bool = True):
     pyperclip.copy(text)
     time.sleep(0.03)
 
-    # 3. 硬件级极速发送 Ctrl+V 与 Enter 回车
+    # 3. 硬件级极速发送 Ctrl+V / Cmd+V 与 Enter 回车
     if sys.platform == "win32":
         import ctypes
         user32 = ctypes.windll.user32
@@ -250,13 +289,19 @@ def inject_prompt_to_active_window(text: str, auto_enter: bool = True):
             user32.keybd_event(VK_RETURN, 0, 0, 0)
             time.sleep(0.02)
             user32.keybd_event(VK_RETURN, 0, KEYEVENTF_KEYUP, 0)
-    else:
-        # macOS
-        paste_modifier = "command" if sys.platform == "darwin" else "ctrl"
-        pyautogui.hotkey(paste_modifier, "v")
+    elif sys.platform == "darwin":
+        # macOS 原生极速模拟 Cmd+V 与 Return 回车
+        script = 'tell application "System Events" to keystroke "v" using command down'
+        os.system(f"osascript -e '{script}' 2>/dev/null")
         if auto_enter:
             time.sleep(0.06)
-            pyautogui.press("enter")
+            os.system("osascript -e 'tell application \"System Events\" to key code 36' 2>/dev/null")
+    else:
+        # 通用回退
+        pyautogui.hotkey('ctrl', 'v')
+        if auto_enter:
+            time.sleep(0.06)
+            pyautogui.press('enter')
 
     print(f"🚀 已全自动填入并敲击回车: 【{text}】")
 
@@ -550,6 +595,8 @@ def run_walkie_talkie_daemon():
                         if sys.platform == "win32":
                             import ctypes
                             ctypes.windll.user32.LockWorkStation()
+                        elif sys.platform == "darwin":
+                            os.system("pmset displaysleepnow 2>/dev/null")
                         continue
 
                     elif line == "CMD:desktop":
@@ -575,6 +622,10 @@ def run_walkie_talkie_daemon():
                                     time.sleep(0.04)
                                     ctypes.windll.user32.keybd_event(VK_D, 0, KEYEVENTF_KEYUP, 0)
                                     ctypes.windll.user32.keybd_event(VK_LWIN, 0, KEYEVENTF_KEYUP, 0)
+                        elif sys.platform == "darwin":
+                            send_key_combo_cross_platform(0, 0, mac_key_code=103) # F11
+                        continue
+
                     elif line.startswith("MOUSE:"):
                         # MOUSE:dx,dy,wheel
                         parts = line[6:].split(',')
@@ -590,8 +641,14 @@ def run_walkie_talkie_daemon():
                                         user32.mouse_event(0x0001, ctypes.c_long(dx), ctypes.c_long(dy), 0, 0)
                                     if wheel != 0:
                                         user32.mouse_event(0x0800, 0, 0, ctypes.c_long(wheel * 120).value, 0)
+                                elif sys.platform == "darwin":
+                                    if dx != 0 or dy != 0:
+                                        pyautogui.moveRel(dx, dy)
+                                    if wheel != 0:
+                                        pyautogui.scroll(wheel * 3)
                             except Exception:
                                 pass
+
                     elif line == "MODE:TOUCH_MOUSE":
                         print("\n🖱️ [CoreS3 触控板] 进入触控鼠标模式 (双通道待命，指哪打哪)...")
                         continue
@@ -603,6 +660,8 @@ def run_walkie_talkie_daemon():
                             user32.mouse_event(0x0002, 0, 0, 0, 0) # LEFTDOWN
                             time.sleep(0.015)
                             user32.mouse_event(0x0004, 0, 0, 0, 0) # LEFTUP
+                        elif sys.platform == "darwin":
+                            pyautogui.click(button="left")
                         continue
 
                     elif line == "CMD:mouse_double_click":
@@ -614,6 +673,8 @@ def run_walkie_talkie_daemon():
                             time.sleep(0.04)
                             user32.mouse_event(0x0002, 0, 0, 0, 0)
                             user32.mouse_event(0x0004, 0, 0, 0, 0)
+                        elif sys.platform == "darwin":
+                            pyautogui.doubleClick()
                         continue
 
                     elif line == "CMD:mouse_right":
@@ -623,10 +684,12 @@ def run_walkie_talkie_daemon():
                             user32.mouse_event(0x0008, 0, 0, 0, 0) # RIGHTDOWN
                             time.sleep(0.015)
                             user32.mouse_event(0x0010, 0, 0, 0, 0) # RIGHTUP
+                        elif sys.platform == "darwin":
+                            pyautogui.click(button="right")
                         continue
 
                     elif line == "CMD:switch_window":
-                        print("\n🔀 [CoreS3 快捷台] 切换应用 (Alt + Tab / Switch App)...")
+                        print("\n🔀 [CoreS3 快捷台] 切换应用 (Alt + Tab / Cmd + Tab)...")
                         if sys.platform == "win32":
                             import ctypes
                             user32 = ctypes.windll.user32
@@ -638,83 +701,51 @@ def run_walkie_talkie_daemon():
                             time.sleep(0.03)
                             user32.keybd_event(VK_TAB, 0, KEYEVENTF_KEYUP, 0)
                             user32.keybd_event(VK_MENU, 0, KEYEVENTF_KEYUP, 0)
+                        elif sys.platform == "darwin":
+                            send_key_combo_cross_platform(0, 0, mac_key_code=48, mac_mods="command")
                         continue
 
                     elif line == "CMD:select_all":
-                        print("\n📑 [CoreS3 快捷台] 全选 Ctrl + A")
-                        if sys.platform == "win32":
-                            import ctypes
-                            VK_CONTROL = 0x11
-                            VK_A = 0x41
-                            KEYEVENTF_KEYUP = 0x0002
-                            ctypes.windll.user32.keybd_event(VK_CONTROL, 0, 0, 0)
-                            ctypes.windll.user32.keybd_event(VK_A, 0, 0, 0)
-                            time.sleep(0.03)
-                            ctypes.windll.user32.keybd_event(VK_A, 0, KEYEVENTF_KEYUP, 0)
-                            ctypes.windll.user32.keybd_event(VK_CONTROL, 0, KEYEVENTF_KEYUP, 0)
+                        print("\n📑 [CoreS3 快捷台] 全选 Ctrl + A / Cmd + A")
+                        send_key_combo_cross_platform(0x11, 0x41, mac_key_char="a", mac_mods="command")
                         continue
 
                     elif line == "CMD:copy":
-                        print("\n📋 [CoreS3 快捷台] 复制 Ctrl + C")
-                        if sys.platform == "win32":
-                            import ctypes
-                            VK_CONTROL = 0x11
-                            VK_C = 0x43
-                            KEYEVENTF_KEYUP = 0x0002
-                            ctypes.windll.user32.keybd_event(VK_CONTROL, 0, 0, 0)
-                            ctypes.windll.user32.keybd_event(VK_C, 0, 0, 0)
-                            time.sleep(0.03)
-                            ctypes.windll.user32.keybd_event(VK_C, 0, KEYEVENTF_KEYUP, 0)
-                            ctypes.windll.user32.keybd_event(VK_CONTROL, 0, KEYEVENTF_KEYUP, 0)
+                        print("\n📋 [CoreS3 快捷台] 复制 Ctrl + C / Cmd + C")
+                        send_key_combo_cross_platform(0x11, 0x43, mac_key_char="c", mac_mods="command")
                         continue
 
                     elif line == "CMD:paste":
-                        print("\n📋 [CoreS3 快捷台] 粘贴 Ctrl + V")
-                        if sys.platform == "win32":
-                            import ctypes
-                            VK_CONTROL = 0x11
-                            VK_V = 0x56
-                            KEYEVENTF_KEYUP = 0x0002
-                            ctypes.windll.user32.keybd_event(VK_CONTROL, 0, 0, 0)
-                            ctypes.windll.user32.keybd_event(VK_V, 0, 0, 0)
-                            time.sleep(0.03)
-                            ctypes.windll.user32.keybd_event(VK_V, 0, KEYEVENTF_KEYUP, 0)
-                            ctypes.windll.user32.keybd_event(VK_CONTROL, 0, KEYEVENTF_KEYUP, 0)
+                        print("\n📋 [CoreS3 快捷台] 粘贴 Ctrl + V / Cmd + V")
+                        send_key_combo_cross_platform(0x11, 0x56, mac_key_char="v", mac_mods="command")
                         continue
 
                     elif line == "CMD:clear_input":
-                        print("\n🧹 [CoreS3 硬件指令] 取消录音：全选并清空输入框 (Ctrl+A -> Backspace)...")
+                        print("\n🧹 [CoreS3 硬件指令] 取消录音：全选并清空输入框...")
                         if sys.platform == "win32":
                             import ctypes
                             VK_CONTROL = 0x11
                             VK_A = 0x41
                             VK_BACK = 0x08
                             KEYEVENTF_KEYUP = 0x0002
-                            # Ctrl + A
                             ctypes.windll.user32.keybd_event(VK_CONTROL, 0, 0, 0)
                             ctypes.windll.user32.keybd_event(VK_A, 0, 0, 0)
                             time.sleep(0.02)
                             ctypes.windll.user32.keybd_event(VK_A, 0, KEYEVENTF_KEYUP, 0)
                             ctypes.windll.user32.keybd_event(VK_CONTROL, 0, KEYEVENTF_KEYUP, 0)
                             time.sleep(0.03)
-                            # Backspace
                             ctypes.windll.user32.keybd_event(VK_BACK, 0, 0, 0)
                             time.sleep(0.02)
                             ctypes.windll.user32.keybd_event(VK_BACK, 0, KEYEVENTF_KEYUP, 0)
+                        elif sys.platform == "darwin":
+                            send_key_combo_cross_platform(0, 0, mac_key_char="a", mac_mods="command")
+                            time.sleep(0.03)
+                            send_key_combo_cross_platform(0, 0, mac_key_code=51) # Backspace
                         continue
 
                     elif line == "CMD:undo":
-                        print("\n↩️ [CoreS3 快捷台] 撤销 Ctrl + Z")
-                        if sys.platform == "win32":
-                            import ctypes
-                            VK_CONTROL = 0x11
-                            VK_Z = 0x5A
-                            KEYEVENTF_KEYUP = 0x0002
-                            ctypes.windll.user32.keybd_event(VK_CONTROL, 0, 0, 0)
-                            ctypes.windll.user32.keybd_event(VK_Z, 0, 0, 0)
-                            time.sleep(0.03)
-                            ctypes.windll.user32.keybd_event(VK_Z, 0, KEYEVENTF_KEYUP, 0)
-                            ctypes.windll.user32.keybd_event(VK_CONTROL, 0, KEYEVENTF_KEYUP, 0)
+                        print("\n↩️ [CoreS3 快捷台] 撤销 Ctrl + Z / Cmd + Z")
+                        send_key_combo_cross_platform(0x11, 0x5A, mac_key_char="z", mac_mods="command")
                         continue
 
                     elif line == "VOICE_START":

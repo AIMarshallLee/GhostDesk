@@ -547,6 +547,17 @@ def run_walkie_talkie_daemon():
                             user32.mouse_event(0x0004, 0, 0, 0, 0) # LEFTUP
                         continue
 
+                    elif line == "CMD:mouse_double_click":
+                        if sys.platform == "win32":
+                            import ctypes
+                            user32 = ctypes.windll.user32
+                            user32.mouse_event(0x0002, 0, 0, 0, 0)
+                            user32.mouse_event(0x0004, 0, 0, 0, 0)
+                            time.sleep(0.04)
+                            user32.mouse_event(0x0002, 0, 0, 0, 0)
+                            user32.mouse_event(0x0004, 0, 0, 0, 0)
+                        continue
+
                     elif line == "CMD:mouse_right":
                         if sys.platform == "win32":
                             import ctypes

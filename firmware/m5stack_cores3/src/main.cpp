@@ -134,6 +134,9 @@ struct SystemState {
   int mouseScrollVisualY = -1;
   uint32_t btnScrollUpHighlight = 0;
   uint32_t btnScrollDownHighlight = 0;
+  int8_t scrollRepeatDir = 0;           // +1 连续上滚, -1 连续下滚, 0 无
+  uint32_t scrollRepeatStartTime = 0;   // 长按开始时间
+  uint32_t scrollNextRepeatTime = 0;    // 下一次触发时间
 
   uint32_t lastUserActionTime = 0;      // 最后一次用户触控操作时间
   bool isDimmed = false;                // 是否处于低功耗微暗屏状态
@@ -556,77 +559,97 @@ void drawSystemShortcutsView(uint32_t now) {
 }
 
 // ==========================================
-// 视图 3：触控鼠标模式 (保留统一顶栏导航 + 左侧高精度触控板 + 右侧专属垂直滚轮条)
+// 视图 3：触控鼠标模式 (保留统一顶栏导航 + 左侧高精度触控板 + 右侧全屏垂直滚轮条)
 // ==========================================
 void drawTouchMouseView(uint32_t now) {
-  // 1. 顶栏保持系统原生三大 Tab [电脑遥控] [翻页] [控制]，用户可直接点击顶栏任意 Tab 返回或切页！
-  // 不需要任何额外的“返回语音”按键，彻底杜绝误触！
+  // 1. 左侧：高精度触控板主域 (X: 6, Y: 48, W: 236, H: 186, R: 8)
+  canvas.fillRoundRect(6, 48, 236, 186, 8, 0x10A2);
+  canvas.drawRoundRect(6, 48, 236, 186, 8, 0x2124);
 
-  // 2. 左侧：高精度触控板主域 (X: 6, Y: 48, W: 238, H: 188, R: 8)
-  canvas.fillRoundRect(6, 48, 238, 188, 8, 0x10A2);
-  canvas.drawRoundRect(6, 48, 238, 188, 8, 0x2124);
-
-  // 触控板核心手势指引 (极简微光灰，居中在 X: 125)
+  // 触控板核心手势指引 (极简微光灰，居中在 X: 124)
   canvas.setTextColor(0x52AA);
   canvas.setTextSize(1);
-  canvas.drawCenterString("单指划动：光标移动", 125, 88);
-  canvas.drawCenterString("单指轻击：左键单击", 125, 118);
-  canvas.drawCenterString("单指双击：打开文件", 125, 148);
+  canvas.drawCenterString("单指划动：光标移动", 124, 88);
+  canvas.drawCenterString("单指轻击：左键单击", 124, 118);
+  canvas.drawCenterString("单指双击：打开文件", 124, 148);
   canvas.setTextColor(0x39E7);
-  canvas.drawCenterString("双指轻击：右键菜单", 125, 178);
+  canvas.drawCenterString("双指轻击：右键菜单", 124, 178);
 
   // 左侧触控板：手指触碰时的灵动涟漪光圈动效
-  if (!state.mouseInScrollStrip && state.mouseVisualX >= 6 && state.mouseVisualX <= 244 && state.mouseVisualY >= 48 && state.mouseVisualY <= 236) {
+  if (!state.mouseInScrollStrip && state.mouseVisualX >= 6 && state.mouseVisualX <= 242 && state.mouseVisualY >= 48 && state.mouseVisualY <= 234) {
     canvas.drawCircle(state.mouseVisualX, state.mouseVisualY, 16, 0x07FF);
     canvas.fillCircle(state.mouseVisualX, state.mouseVisualY, 5, TFT_WHITE);
   }
 
-  // 3. 右侧：专属高灵敏垂直滚轮条 (X: 250, Y: 48, W: 64, H: 188, R: 8)
+  // 2. 右侧：全屏高灵敏专属垂直滚轮条 (X: 248, Y: 8, W: 66, H: 226, R: 10)
+  // 贯穿全屏高度，彻底与系统快捷隔离，绝无误触！
   bool isStripActive = state.mouseInScrollStrip;
   bool isUpActive = (now < state.btnScrollUpHighlight);
   bool isDownActive = (now < state.btnScrollDownHighlight);
 
   // 滚轮条底槽
-  canvas.fillRoundRect(250, 48, 64, 188, 8, isStripActive ? 0x18E4 : 0x10A2);
-  canvas.drawRoundRect(250, 48, 64, 188, 8, isStripActive ? 0x07FF : 0x3186);
+  canvas.fillRoundRect(248, 8, 66, 226, 10, isStripActive ? 0x18E4 : 0x10A2);
+  canvas.drawRoundRect(248, 8, 66, 226, 10, isStripActive ? 0x07FF : 0x3186);
 
-  // 顶部【▲ 上滚】按键 (X: 253, Y: 51, W: 58, H: 40, R: 6)
-  canvas.fillRoundRect(253, 51, 58, 40, 6, isUpActive ? 0x0320 : 0x18C3);
-  canvas.drawRoundRect(253, 51, 58, 40, 6, isUpActive ? 0x07E0 : 0x3186);
+  // 顶部【▲ 上滚】按键 (X: 251, Y: 12, W: 60, H: 56, R: 8)
+  canvas.fillRoundRect(251, 12, 60, 56, 8, isUpActive ? 0x0320 : 0x18C3);
+  canvas.drawRoundRect(251, 12, 60, 56, 8, isUpActive ? 0x07E0 : 0x3186);
   canvas.setTextColor(isUpActive ? TFT_WHITE : 0x07FF);
   canvas.setTextSize(1);
-  canvas.drawCenterString("▲ 上", 282, 65);
+  canvas.drawCenterString("▲", 281, 24);
+  canvas.drawCenterString("上滚", 281, 44);
 
-  // 底部【▼ 下滚】按键 (X: 253, Y: 193, W: 58, H: 40, R: 6)
-  canvas.fillRoundRect(253, 193, 58, 40, 6, isDownActive ? 0x0320 : 0x18C3);
-  canvas.drawRoundRect(253, 193, 58, 40, 6, isDownActive ? 0x07E0 : 0x3186);
+  // 底部【▼ 下滚】按键 (X: 251, Y: 172, W: 60, H: 56, R: 8)
+  canvas.fillRoundRect(251, 172, 60, 56, 8, isDownActive ? 0x0320 : 0x18C3);
+  canvas.drawRoundRect(251, 172, 60, 56, 8, isDownActive ? 0x07E0 : 0x3186);
   canvas.setTextColor(isDownActive ? TFT_WHITE : 0x07FF);
   canvas.setTextSize(1);
-  canvas.drawCenterString("▼ 下", 282, 207);
+  canvas.drawCenterString("下滚", 281, 184);
+  canvas.drawCenterString("▼", 281, 204);
 
-  // 中间滑道轨道槽 (Y: 94 ~ 190, H: 96)
-  canvas.drawFastVLine(282, 94, 96, 0x2124);
-  canvas.drawFastVLine(281, 94, 96, 0x3186);
+  // 中间滑道轨道槽 (Y: 72 ~ 168, H: 96)
+  canvas.drawFastVLine(282, 72, 96, 0x2124);
+  canvas.drawFastVLine(280, 72, 96, 0x3186);
 
-  // 动态滑块 Thumb (跟随手指位置，Y: 94 ~ 164)
-  int thumbY = 129; // 默认居中
-  if (isStripActive && state.mouseScrollVisualY >= 94 && state.mouseScrollVisualY <= 190) {
+  // 动态滑块 Thumb (跟随手指位置，Y: 72 ~ 142)
+  int thumbY = 107; // 默认居中
+  if (isStripActive && state.mouseScrollVisualY >= 72 && state.mouseScrollVisualY <= 168) {
     thumbY = state.mouseScrollVisualY - 13;
-    if (thumbY < 94) thumbY = 94;
-    if (thumbY > 164) thumbY = 164;
+    if (thumbY < 72) thumbY = 72;
+    if (thumbY > 142) thumbY = 142;
+  } else if (isStripActive && state.mouseScrollVisualY < 72) {
+    thumbY = 72; // 点按或长按上滚时自动上移
+  } else if (isStripActive && state.mouseScrollVisualY > 168) {
+    thumbY = 142; // 点按或长按下滚时自动下移
   }
-  canvas.fillRoundRect(256, thumbY, 52, 26, 6, isStripActive ? 0x07FF : 0x2965);
-  canvas.drawRoundRect(256, thumbY, 52, 26, 6, isStripActive ? TFT_WHITE : 0x4A69);
+  canvas.fillRoundRect(254, thumbY, 54, 26, 6, isStripActive ? 0x07FF : 0x2965);
+  canvas.drawRoundRect(254, thumbY, 54, 26, 6, isStripActive ? TFT_WHITE : 0x4A69);
   uint16_t notchColor = isStripActive ? 0x0000 : 0x7BEF;
-  canvas.drawFastHLine(266, thumbY + 7, 32, notchColor);
-  canvas.drawFastHLine(266, thumbY + 12, 32, notchColor);
-  canvas.drawFastHLine(266, thumbY + 17, 32, notchColor);
+  canvas.drawFastHLine(264, thumbY + 7, 34, notchColor);
+  canvas.drawFastHLine(264, thumbY + 12, 34, notchColor);
+  canvas.drawFastHLine(264, thumbY + 17, 34, notchColor);
 }
 
 // ==========================================
 // 顶栏：三大全功能主 Tab [语音] [翻页] [控制] + 苹果风竖直微电量柱
 // ==========================================
 void drawDynamicIsland() {
+  if (currentMode == MODE_TOUCH_MOUSE) {
+    // 触控鼠标模式下：Tab 1 和 Tab 2 居左展开，右侧彻底留给高灵敏滚轮条，绝不画 Tab 3 杜绝误触！
+    canvas.fillRoundRect(6, 6, 114, 38, 8, 0x18C3);
+    canvas.drawRoundRect(6, 6, 114, 38, 8, 0x3186);
+    canvas.setTextColor(0x7BEF);
+    canvas.setTextSize(1);
+    canvas.drawCenterString(activeVoiceMode == MODE_BLE_REMOTE ? "电脑遥控" : "云端语音", 63, 18);
+
+    canvas.fillRoundRect(126, 6, 114, 38, 8, 0x18C3);
+    canvas.drawRoundRect(126, 6, 114, 38, 8, 0x3186);
+    canvas.setTextColor(0x7BEF);
+    canvas.setTextSize(1);
+    canvas.drawCenterString("翻页", 183, 18);
+    return;
+  }
+
   // ── Tab 1: 语音功能区 (X: 6, Y: 6, 宽 92, 高 38, R: 8) ──
   // 支持 450ms 内双击直接在「云端语音」和「电脑遥控」之间平滑切换！
   if (currentMode == MODE_CORES3_MIC) {
@@ -1290,15 +1313,15 @@ void loop() {
       tab2LongTriggered = false;
     }
 
-    // ── 触控鼠标模式交互区 (Y > 46) ──
-    // 用户反馈：顶栏已有标准 Tab [电脑遥控] [翻页] [控制]，用户可随时轻触顶栏返回，无需任何特殊按键！
-    if (currentMode == MODE_TOUCH_MOUSE && ty > 46) {
+    // ── 触控鼠标模式交互区 ──
+    if (currentMode == MODE_TOUCH_MOUSE) {
       if (touchCount > state.mouseMaxFingers) {
         state.mouseMaxFingers = touchCount;
       }
 
-      // ── 分流 1：右侧专属物理级垂直滚轮条 (tx >= 246) ──
-      if (tx >= 246) {
+      // ── 分流 1：右侧专属物理级垂直滚轮条 (全屏高度 Y: 0 ~ 240, tx >= 244) ──
+      // 彻底与系统快捷隔离，滑动再远也绝不会误触顶栏 Tab 3！
+      if (tx >= 244) {
         state.mouseInScrollStrip = true;
         state.mouseScrollVisualY = ty;
 
@@ -1309,92 +1332,139 @@ void loop() {
           state.mouseTouchStartTime = now;
           state.mouseScrollAccumulator = 0.0f;
 
-          // 若直接点中顶部 [▲ 上] 按钮 (ty <= 92)
-          if (ty <= 92) {
+          // 1. 点按上部：立即上滚 1 格，滑块自动跟过去；300ms 后自动开启长按连击
+          if (ty <= 70) {
+            state.scrollRepeatDir = 1;
+            state.scrollRepeatStartTime = now;
+            state.scrollNextRepeatTime = now + 300;
             state.btnScrollUpHighlight = now + 200;
-            if (BleCombo.isConnected()) BleCombo.moveMouse(0, 0, 3);
-            Serial.println("MOUSE:0,0,3");
+            if (BleCombo.isConnected()) BleCombo.moveMouse(0, 0, 1);
+            Serial.println("MOUSE:0,0,1");
+            state.mouseScrollVisualY = 40;
             renderScreen();
-          } else if (ty >= 190) {
-            // 若直接点中底部 [▼ 下] 按钮 (ty >= 190)
+          } else if (ty >= 170) {
+            // 2. 点按下部：立即下滚 1 格，滑块自动跟过去；300ms 后自动开启长按连击
+            state.scrollRepeatDir = -1;
+            state.scrollRepeatStartTime = now;
+            state.scrollNextRepeatTime = now + 300;
             state.btnScrollDownHighlight = now + 200;
-            if (BleCombo.isConnected()) BleCombo.moveMouse(0, 0, -3);
-            Serial.println("MOUSE:0,0,-3");
+            if (BleCombo.isConnected()) BleCombo.moveMouse(0, 0, -1);
+            Serial.println("MOUSE:0,0,-1");
+            state.mouseScrollVisualY = 200;
             renderScreen();
+          } else {
+            state.scrollRepeatDir = 0;
           }
         } else {
-          int dy = ty - state.mouseScrollLastY;
-          state.mouseScrollLastY = ty;
-
-          if (dy != 0) {
-            // 向上滑 (dy < 0) -> 滚轮向上滚动 (+wheel)
-            // 向下滑 (dy > 0) -> 滚轮向下滚动 (-wheel)
-            state.mouseScrollAccumulator += (-dy) * 0.22f;
-
-            int steps = (int)state.mouseScrollAccumulator;
-            if (steps != 0) {
-              state.mouseScrollAccumulator -= steps;
-              if (BleCombo.isConnected()) BleCombo.moveMouse(0, 0, (int8_t)steps);
-              Serial.printf("MOUSE:0,0,%d\n", steps);
+          // 持续按住 / 拖拽
+          if (state.scrollRepeatDir != 0) {
+            if (abs(ty - state.mouseTouchStartY) > 16) {
+              // 手指移出按钮区域，转为划动手势
+              state.scrollRepeatDir = 0;
+            } else if (now >= state.scrollNextRepeatTime) {
+              // 2. 长按连滚：按住不放每 75ms 自动连滚 1 格！
+              state.scrollNextRepeatTime = now + 75;
+              if (BleCombo.isConnected()) BleCombo.moveMouse(0, 0, state.scrollRepeatDir);
+              Serial.printf("MOUSE:0,0,%d\n", state.scrollRepeatDir);
+              if (state.scrollRepeatDir > 0) {
+                state.btnScrollUpHighlight = now + 120;
+              } else {
+                state.btnScrollDownHighlight = now + 120;
+              }
+              renderScreen();
             }
-            renderScreen();
+          }
+
+          if (state.scrollRepeatDir == 0) {
+            // 3. 划动操作：根据拖拽距离和速度平滑滚屏
+            int dy = ty - state.mouseScrollLastY;
+            state.mouseScrollLastY = ty;
+
+            if (dy != 0) {
+              state.mouseScrollAccumulator += (-dy) * 0.22f;
+              int steps = (int)state.mouseScrollAccumulator;
+              if (steps != 0) {
+                state.mouseScrollAccumulator -= steps;
+                if (BleCombo.isConnected()) BleCombo.moveMouse(0, 0, (int8_t)steps);
+                Serial.printf("MOUSE:0,0,%d\n", steps);
+              }
+              renderScreen();
+            }
           }
         }
         return;
       }
 
-      // ── 分流 2：左侧高精度触控板主域 (tx < 246) ──
-      state.mouseInScrollStrip = false;
-      state.mouseVisualX = tx;
-      state.mouseVisualY = ty;
+      // ── 分流 2：左侧高精度触控板主域 (tx < 244 && ty > 46) ──
+      if (ty > 46) {
+        state.mouseInScrollStrip = false;
+        state.mouseVisualX = tx;
+        state.mouseVisualY = ty;
 
-      if (touchCount >= 2) {
-        state.mouseMaxFingers = touchCount; // 记录多指操作
+        if (touchCount >= 2) {
+          state.mouseMaxFingers = touchCount; // 记录多指操作
+        }
+
+        // 单指移动光标 -> EMA 低通滤波 + 苹果动力学非线性加速
+        if (state.mouseLastX < 0 || state.mouseLastY < 0) {
+          state.mouseLastX = tx;
+          state.mouseLastY = ty;
+          state.mouseTouchStartX = tx;
+          state.mouseTouchStartY = ty;
+          state.mouseTouchStartTime = now;
+          state.mouseFilterDx = 0.0f;
+          state.mouseFilterDy = 0.0f;
+        } else {
+          int rawDx = tx - state.mouseLastX;
+          int rawDy = ty - state.mouseLastY;
+          state.mouseLastX = tx;
+          state.mouseLastY = ty;
+
+          if (rawDx != 0 || rawDy != 0) {
+            state.mouseFilterDx = rawDx * 0.8f + state.mouseFilterDx * 0.2f;
+            state.mouseFilterDy = rawDy * 0.8f + state.mouseFilterDy * 0.2f;
+
+            float speed = sqrtf(state.mouseFilterDx * state.mouseFilterDx + state.mouseFilterDy * state.mouseFilterDy);
+            float gain;
+            if (speed <= 1.5f) {
+              gain = 1.3f;
+            } else if (speed <= 6.0f) {
+              gain = 1.6f + (speed - 1.5f) * 0.4f;
+            } else {
+              gain = 3.4f + (speed - 6.0f) * 0.3f;
+              if (gain > 6.0f) gain = 6.0f;
+            }
+
+            int moveX = (int)roundf(state.mouseFilterDx * gain);
+            int moveY = (int)roundf(state.mouseFilterDy * gain);
+            if (moveX > 80) moveX = 80;
+            if (moveX < -80) moveX = -80;
+            if (moveY > 80) moveY = 80;
+            if (moveY < -80) moveY = -80;
+
+            if (moveX != 0 || moveY != 0) {
+              if (BleCombo.isConnected()) {
+                BleCombo.moveMouse((int8_t)moveX, (int8_t)moveY, 0);
+              }
+              Serial.printf("MOUSE:%d,%d,0\n", moveX, moveY);
+            }
+          }
+        }
+        return;
       }
 
-      // 单指移动光标 -> EMA 低通滤波 + 苹果动力学非线性加速
-      if (state.mouseLastX < 0 || state.mouseLastY < 0) {
-        state.mouseLastX = tx;
-        state.mouseLastY = ty;
-        state.mouseTouchStartX = tx;
-        state.mouseTouchStartY = ty;
-        state.mouseTouchStartTime = now;
-        state.mouseFilterDx = 0.0f;
-        state.mouseFilterDy = 0.0f;
-      } else {
-        int rawDx = tx - state.mouseLastX;
-        int rawDy = ty - state.mouseLastY;
-        state.mouseLastX = tx;
-        state.mouseLastY = ty;
-
-        if (rawDx != 0 || rawDy != 0) {
-          state.mouseFilterDx = rawDx * 0.8f + state.mouseFilterDx * 0.2f;
-          state.mouseFilterDy = rawDy * 0.8f + state.mouseFilterDy * 0.2f;
-
-          float speed = sqrtf(state.mouseFilterDx * state.mouseFilterDx + state.mouseFilterDy * state.mouseFilterDy);
-          float gain;
-          if (speed <= 1.5f) {
-            gain = 1.3f;
-          } else if (speed <= 6.0f) {
-            gain = 1.6f + (speed - 1.5f) * 0.4f;
-          } else {
-            gain = 3.4f + (speed - 6.0f) * 0.3f;
-            if (gain > 6.0f) gain = 6.0f;
-          }
-
-          int moveX = (int)roundf(state.mouseFilterDx * gain);
-          int moveY = (int)roundf(state.mouseFilterDy * gain);
-          if (moveX > 80) moveX = 80;
-          if (moveX < -80) moveX = -80;
-          if (moveY > 80) moveY = 80;
-          if (moveY < -80) moveY = -80;
-
-          if (moveX != 0 || moveY != 0) {
-            if (BleCombo.isConnected()) {
-              BleCombo.moveMouse((int8_t)moveX, (int8_t)moveY, 0);
-            }
-            Serial.printf("MOUSE:%d,%d,0\n", moveX, moveY);
-          }
+      // ── 分流 3：顶栏 Tab 导航 (tx < 244 && ty <= 46) ──
+      if (!touchLatched) {
+        touchLatched = true;
+        if (tx < 120) {
+          // 点击 Tab 1: 返回语音 / 电脑遥控
+          currentMode = activeVoiceMode;
+          showToast(activeVoiceMode == MODE_BLE_REMOTE ? "已返回: 电脑遥控" : "已返回: 云端语音", 1000);
+          renderScreen();
+        } else {
+          // 点击 Tab 2: 切到翻页
+          currentMode = MODE_PAGE_FLIP;
+          renderScreen();
         }
       }
       return;
@@ -1805,11 +1875,14 @@ void loop() {
     // 手指离开屏幕，结算触控板手势 (单击左键 / 双击打开 / 双指右键)
     if (currentMode == MODE_TOUCH_MOUSE) {
       if (state.mouseInScrollStrip) {
-        // 从右侧滚轮条抬手：清理滚轮状态
+        // 从右侧滚轮条抬手：清理滚轮状态与长按连滚定时器
         state.mouseInScrollStrip = false;
         state.mouseScrollLastY = -1;
         state.mouseScrollAccumulator = 0.0f;
         state.mouseScrollVisualY = -1;
+        state.scrollRepeatDir = 0;
+        state.scrollRepeatStartTime = 0;
+        state.scrollNextRepeatTime = 0;
       } else {
         // 从左侧触控板抬手：判定轻击手势
         uint32_t touchDuration = (state.mouseTouchStartTime > 0) ? (now - state.mouseTouchStartTime) : 999;

@@ -1259,80 +1259,68 @@ void loop() {
         // 右侧垂直阻尼滚轮滑轨 (X >= 268)
         if (state.mouseLastY > 0) {
           int dy = ty - state.mouseLastY;
-          if (abs(dy) >= 6) { // 阻尼过滤，防止轻微手抖导致网页乱滚
+          if (abs(dy) >= 4) {
             int8_t wheel = (dy < 0) ? 1 : -1;
             if (BleCombo.isConnected()) BleCombo.moveMouse(0, 0, wheel);
-            Serial.printf("MOUSE:0,0,%d\n", wheel);
+            else Serial.printf("MOUSE:0,0,%d\n", wheel);
             state.mouseLastY = ty;
           }
         } else {
           state.mouseLastY = ty;
         }
       } else {
-        // 主触控板移动区 (MacBook 触控板手感：指哪打哪，杜绝乱窜)
+        // 主触控板移动区 (MacBook 苹果触控板手感：指哪打哪，细腻平滑)
         state.mouseVisualX = tx;
         state.mouseVisualY = ty;
 
-        // 核心 1：若刚落指 (touch.wasPressed) 或坐标未锚定，先记录基准点，绝不发送位移！
-        if (touch.wasPressed() || state.mouseLastX < 0 || state.mouseLastY < 0) {
+        // 若刚触碰或尚未锚定基准点
+        if (state.mouseLastX < 0 || state.mouseLastY < 0) {
           state.mouseLastX = tx;
           state.mouseLastY = ty;
           state.mouseTouchStartX = tx;
           state.mouseTouchStartY = ty;
           state.mouseTouchStartTime = now;
         } else {
-          int rawDx = tx - state.mouseLastX;
-          int rawDy = ty - state.mouseLastY;
+          int dx = tx - state.mouseLastX;
+          int dy = ty - state.mouseLastY;
+          state.mouseLastX = tx;
+          state.mouseLastY = ty;
 
-          // 核心 2：杜绝换手大跳跃。单帧如果位移超过 22 像素，说明手指抬起换位置了，重新锚定，不移动光标！
-          if (abs(rawDx) > 22 || abs(rawDy) > 22) {
-            state.mouseLastX = tx;
-            state.mouseLastY = ty;
-          } else {
-            float dist = sqrtf((float)(rawDx * rawDx + rawDy * rawDy));
+          if (dx != 0 || dy != 0) {
+            float dist = sqrtf((float)(dx * dx + dy * dy));
+            // 苹果经典动力学加速度模型
+            float gain;
+            if (dist <= 2.0f) {
+              gain = 1.2f; // 慢速微调：清晰 1:1 跟随，绝不截断为 0！
+            } else if (dist <= 7.0f) {
+              gain = 1.5f + (dist - 2.0f) * 0.3f; // 中速巡航：平滑舒适跟手
+            } else {
+              gain = 3.0f + (dist - 7.0f) * 0.25f; // 快速跨屏滑掠
+              if (gain > 5.5f) gain = 5.5f;
+            }
 
-            // 核心 3：死区过滤。电容屏电气噪声小于 1.2px 直接忽略，手指静止时光标稳若磐石！
-            if (dist >= 1.2f) {
-              float scale = 1.0f;
-              // 核心 4：细腻温润的苹果非线性加速度曲线
-              if (dist < 3.5f) {
-                // 慢移微调区：0.75x 细腻慢速微移，专为点小按钮、文字光标设计，指哪打哪！
-                scale = 0.75f;
-              } else if (dist < 8.5f) {
-                // 中速正常滑动：1.1x ~ 1.7x 平滑线性跟随
-                scale = 1.1f + (dist - 3.5f) * 0.12f;
+            int moveX = (int)roundf(dx * gain);
+            int moveY = (int)roundf(dy * gain);
+
+            if (moveX > 80) moveX = 80;
+            if (moveX < -80) moveX = -80;
+            if (moveY > 80) moveY = 80;
+            if (moveY < -80) moveY = -80;
+
+            if (moveX != 0 || moveY != 0) {
+              if (BleCombo.isConnected()) {
+                BleCombo.moveMouse((int8_t)moveX, (int8_t)moveY, 0);
               } else {
-                // 快速甩滑：2.0x ~ 3.2x 跨屏飞跃，但最高严格封顶 3.2x，绝不飞丢！
-                scale = 2.0f + (dist - 8.5f) * 0.15f;
-                if (scale > 3.2f) scale = 3.2f;
-              }
-
-              int moveX = (int)(rawDx * scale);
-              int moveY = (int)(rawDy * scale);
-
-              // 核心 5：单帧步长严格限幅 [-16, 16]，绝不飞窜！
-              if (moveX > 16) moveX = 16;
-              if (moveX < -16) moveX = -16;
-              if (moveY > 16) moveY = 16;
-              if (moveY < -16) moveY = -16;
-
-              if (moveX != 0 || moveY != 0) {
-                // 双通道输出：BLE 蓝牙 + USB 串口同时发送！
-                if (BleCombo.isConnected()) {
-                  BleCombo.moveMouse((int8_t)moveX, (int8_t)moveY, 0);
-                }
                 Serial.printf("MOUSE:%d,%d,0\n", moveX, moveY);
               }
-              state.mouseLastX = tx;
-              state.mouseLastY = ty;
             }
           }
         }
       }
 
-      // 核心 6：UI 渲染按 33ms 限频 (30FPS)，绝不阻塞 200Hz 触控采样与光标流！
+      // 触控移动时 UI 维持 35ms 刷新，确保光标与触控无任何阻塞
       static uint32_t lastMouseRenderTime = 0;
-      if (now - lastMouseRenderTime >= 33) {
+      if (now - lastMouseRenderTime >= 35) {
         lastMouseRenderTime = now;
         renderScreen();
       }

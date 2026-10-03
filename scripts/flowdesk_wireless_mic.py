@@ -95,14 +95,26 @@ async def main():
     cable_id, cable_name, dev_channels = find_cable_input_device()
     target_channels = min(2, max(1, dev_channels))
 
+    # 智能探测声卡支持的采样率 (macOS CoreAudio 原生常锁定 48kHz 或 44.1kHz)
+    target_sr = 16000
+    if cable_id is not None:
+        for candidate_sr in [16000, 48000, 44100]:
+            try:
+                sd.check_output_settings(device=cable_id, samplerate=candidate_sr, channels=target_channels, dtype='int16')
+                target_sr = candidate_sr
+                break
+            except Exception:
+                continue
+
     if cable_id is None:
         print("[提示] 尚未检测到虚拟音频设备 'VB-Cable' 或 'CABLE Input'！")
         print(">>> 正在使用系统默认音频通道做预览监听...\n")
         out_stream = sd.OutputStream(samplerate=16000, channels=1, dtype='int16')
         target_channels = 1
+        target_sr = 16000
     else:
-        print(f"[就绪] 成功绑定虚拟音频输入通道: [{cable_id}] {cable_name} ({target_channels}声道)")
-        out_stream = sd.OutputStream(device=cable_id, samplerate=16000, channels=target_channels, dtype='int16')
+        print(f"[就绪] 成功绑定虚拟音频输入通道: [{cable_id}] {cable_name} ({target_channels}声道, {target_sr}Hz)")
+        out_stream = sd.OutputStream(device=cable_id, samplerate=target_sr, channels=target_channels, dtype='int16')
 
     out_stream.start()
     decoder = AdpcmDecoder()
@@ -114,14 +126,28 @@ async def main():
         nonlocal packet_count, last_ui_time
         pcm = decoder.decode_chunk(bytes(data))
         
-        # 软件数字动态增益 (2.5x 提升远场与微弱语音清晰度，带限幅防爆音)
+        # 1. 软件数字动态增益 (2.5x 提升远场与微弱语音清晰度，带限幅防爆音)
         pcm_boosted = np.clip(pcm.astype(np.float32) * 2.5, -32768, 32767).astype(np.int16)
 
-        # 适配 macOS CoreAudio 严格要求的双声道 (Stereo 2-channel)
-        if target_channels == 2:
-            pcm_out = np.column_stack((pcm_boosted, pcm_boosted))
+        # 2. 采样率平滑适配 (CoreS3 采集为 16kHz，若声卡要求 48kHz/44.1kHz 则智能插值)
+        if target_sr == 48000:
+            pcm_resampled = np.repeat(pcm_boosted, 3)
+        elif target_sr == 16000:
+            pcm_resampled = pcm_boosted
         else:
-            pcm_out = pcm_boosted
+            src_len = len(pcm_boosted)
+            dst_len = int(src_len * target_sr / 16000)
+            pcm_resampled = np.interp(
+                np.linspace(0, src_len, dst_len, endpoint=False),
+                np.arange(src_len),
+                pcm_boosted
+            ).astype(np.int16)
+
+        # 3. 适配 macOS CoreAudio 严格要求的双声道 (Stereo 2-channel)
+        if target_channels == 2:
+            pcm_out = np.column_stack((pcm_resampled, pcm_resampled))
+        else:
+            pcm_out = pcm_resampled
 
         out_stream.write(pcm_out)
         packet_count += 1

@@ -1,0 +1,6 @@
+{
+  "webhook_url": "",
+  "enable_feishu": true,
+  "notify_on_start": true,
+  "notify_on_complete": true
+}

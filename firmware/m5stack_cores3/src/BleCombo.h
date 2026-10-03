@@ -148,19 +148,29 @@ public:
   uint32_t onPassKeyRequest() override { return 0; }
   void onPassKeyNotify(uint32_t pass_key) override {}
   bool onSecurityRequest() override { return true; }
-  void onAuthenticationComplete(esp_ble_auth_cmpl_t cmpl) override {}
+  void onAuthenticationComplete(esp_ble_auth_cmpl_t cmpl) override {
+    if (cmpl.success) {
+      Serial.println("[BLE] Security Auth / Bonding Success!");
+    } else {
+      Serial.printf("[BLE] Security Auth / Bonding Failed (0x%02x)\n", cmpl.fail_reason);
+    }
+  }
   bool onConfirmPIN(uint32_t pin) override { return true; }
 };
 
 class BleComboServerCallbacks : public BLEServerCallbacks {
 public:
   bool* connected;
-  BleComboServerCallbacks(bool* c) : connected(c) {}
-  void onConnect(BLEServer* pServer) override {
+  uint16_t* connId;
+  BleComboServerCallbacks(bool* c, uint16_t* id) : connected(c), connId(id) {}
+  void onConnect(BLEServer* pServer, esp_ble_gatts_cb_param_t *param) override {
     *connected = true;
+    if (connId && param) *connId = param->connect.conn_id;
+    Serial.printf("[BLE] Host Connected! conn_id=%d\n", param ? param->connect.conn_id : 0);
   }
   void onDisconnect(BLEServer* pServer) override {
     *connected = false;
+    Serial.println("[BLE] Host Disconnected. Fast Advertising Restored...");
     BLEDevice::startAdvertising();
   }
 };
@@ -173,7 +183,9 @@ private:
   BLECharacteristic* outputKeyboard = nullptr;
   BLECharacteristic* inputMouse = nullptr;
   BLECharacteristic* inputMedia = nullptr;
+  BLECharacteristic* voiceDataChar = nullptr;
   bool _connected = false;
+  uint16_t _connId = 0;
   BleKeyReport _keyReport = {0, 0, {0}};
   uint8_t _mouseButtons = 0;
 
@@ -181,7 +193,7 @@ public:
   void begin(const std::string& deviceName = "FlowDesk Remote") {
     BLEDevice::init(deviceName);
     pServer = BLEDevice::createServer();
-    pServer->setCallbacks(new BleComboServerCallbacks(&_connected));
+    pServer->setCallbacks(new BleComboServerCallbacks(&_connected, &_connId));
 
     pHid = new BLEHIDDevice(pServer);
     inputKeyboard = pHid->inputReport(BLE_KEY_REPORT_ID);
@@ -195,6 +207,19 @@ public:
     pHid->reportMap((uint8_t*)_hidReportDescriptor, sizeof(_hidReportDescriptor));
     pHid->startServices();
 
+    // 独立无线话筒 GATT 语音通道 (免驱 HID 键鼠 + 语音数据双模，互不干扰)
+    BLEService* pVoiceService = pServer->createService("12345678-1234-5678-1234-56789abcdef0");
+    voiceDataChar = pVoiceService->createCharacteristic(
+      "12345678-1234-5678-1234-56789abcdef1",
+      BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_READ
+    );
+    voiceDataChar->setAccessPermissions(ESP_GATT_PERM_READ);
+    BLE2902* pVoiceDesc = new BLE2902();
+    pVoiceDesc->setAccessPermissions(ESP_GATT_PERM_READ | ESP_GATT_PERM_WRITE);
+    pVoiceDesc->setNotifications(true);
+    voiceDataChar->addDescriptor(pVoiceDesc);
+    pVoiceService->start();
+
     BLEDevice::setSecurityCallbacks(new BleSecurityHandler());
     BLESecurity *pSecurity = new BLESecurity();
     pSecurity->setAuthenticationMode(ESP_LE_AUTH_BOND);
@@ -204,11 +229,35 @@ public:
     BLEAdvertising *pAdvertising = pServer->getAdvertising();
     pAdvertising->setAppearance(0x03C0); // HID Composite (Keyboard + Mouse)
     pAdvertising->addServiceUUID(pHid->hidService()->getUUID());
-    pAdvertising->setScanResponse(false);
+    pAdvertising->setScanResponse(true);
     pAdvertising->setMinPreferred(0x06);
     pAdvertising->setMaxPreferred(0x12);
+    pAdvertising->setMinInterval(0x20); // 20ms 高频极速广播，秒级秒连
+    pAdvertising->setMaxInterval(0x40); // 40ms
     pAdvertising->start();
     pHid->setBatteryLevel(100);
+  }
+
+  void disconnect() {
+    if (pServer && _connected) {
+      Serial.println("[BLE] Gracefully disconnecting host before switch...");
+      pServer->disconnect(_connId);
+      _connected = false;
+    }
+  }
+
+  void clearAllBonds() {
+    int devNum = esp_ble_get_bond_device_num();
+    if (devNum > 0) {
+      esp_ble_bond_dev_t *dev_list = (esp_ble_bond_dev_t *)malloc(sizeof(esp_ble_bond_dev_t) * devNum);
+      if (dev_list) {
+        esp_ble_get_bond_device_list(&devNum, dev_list);
+        for (int i = 0; i < devNum; i++) {
+          esp_ble_remove_bond_device(dev_list[i].bd_addr);
+        }
+        free(dev_list);
+      }
+    }
   }
 
   bool isConnected() const {
@@ -305,6 +354,12 @@ public:
     uint8_t zero[2] = {0, 0};
     inputMedia->setValue(zero, 2);
     inputMedia->notify();
+  }
+
+  void sendVoicePacket(const uint8_t* data, size_t length) {
+    if (!_connected || !voiceDataChar) return;
+    voiceDataChar->setValue((uint8_t*)data, length);
+    voiceDataChar->notify();
   }
 };
 

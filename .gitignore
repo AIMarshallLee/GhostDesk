@@ -41,3 +41,6 @@ Thumbs.db
 .pio/
 main.cjs
 FlowDesk-win32-x64/
+*.zip
+output_app/
+package_assets/

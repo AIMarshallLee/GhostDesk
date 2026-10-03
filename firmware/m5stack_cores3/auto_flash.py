@@ -26,29 +26,30 @@ while True:
     ports = get_ports()
     port_names = [p[0] for p in ports]
     
-    # 检查是否有 COM3 (Bootloader 模式)
+    # 检查是否有可用 COM 端口 (COM3, COM4, COM5)
     target_port = None
-    if "COM3" in port_names:
-        target_port = "COM3"
+    for p in ["COM3", "COM4", "COM5"]:
+        if p in port_names:
+            target_port = p
+            break
 
     if target_port:
-        print(f"\n>>> [CoreS3 Flasher] 检测到设备端口 [{target_port}]，等待驱动就绪...", flush=True)
-        time.sleep(1.0)
-        print(f">>> [CoreS3 Flasher] 正在通过 {target_port} 执行高速极速烧录...", flush=True)
+        print(f"\n>>> [CoreS3 Flasher] 捕获到端口 [{target_port}]，立即握手烧录...", flush=True)
+        time.sleep(0.1)
         cmd = [
-            "uvx", "--from", "esptool", "esptool",
+            sys.executable, r"C:\Users\dasea\.platformio\packages\tool-esptoolpy\esptool.py",
             "--chip", "esp32s3", "--port", target_port, "--baud", "921600",
-            "--before", "default-reset", "--after", "hard-reset",
-            "--connect-attempts", "7",
-            "write-flash", "-z", "--flash-mode", "dio", "--flash-freq", "80m", "--flash-size", "16MB",
+            "--before", "default_reset", "--after", "hard_reset",
+            "--connect-attempts", "5",
+            "write_flash", "-z", "--flash_mode", "dio", "--flash_freq", "80m", "--flash_size", "16MB",
             "0x0", "bootloader.bin", "0x8000", "partitions.bin", "0x10000", "firmware.bin"
         ]
         res = subprocess.run(cmd, cwd=r"d:\GhostDesk\firmware\m5stack_cores3")
         if res.returncode == 0:
-            print("\n>>> [CoreS3 Flasher] 🎉 烧录成功！CoreS3 固件已更新至 v0.8.0 苹果水波极简版！", flush=True)
+            print("\n>>> [CoreS3 Flasher] 🎉 烧录成功！CoreS3 固件已更新至 4 通道增强版！", flush=True)
             sys.exit(0)
         else:
-            print(">>> [CoreS3 Flasher] 烧录遇阻，若卡住请按住 CoreS3 底部红色电源键 2 秒重试...", flush=True)
-            time.sleep(2.0)
+            print(">>> [CoreS3 Flasher] 提示: 请长按 CoreS3 底部按键 2 秒使其稳定在下载模式...", flush=True)
+            time.sleep(0.5)
     else:
         time.sleep(0.5)

@@ -1,0 +1,32 @@
+[
+  {
+    "id": "prof_us_tiktok_01",
+    "name": "🇺🇸 TikTok 美区带货主号 (AuraTech)",
+    "platform": "TikTok",
+    "proxy": "socks5://127.0.0.1:10808",
+    "proxy_display": "US California (洛杉矶独立IP)",
+    "cookies_status": "🟢 已登录保持中 (Session Alive)",
+    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/128.0.0.0",
+    "last_active": "2026-10-02 21:15"
+  },
+  {
+    "id": "prof_us_amazon_02",
+    "name": "🇺🇸 Amazon US 卖家中心 (旗舰店)",
+    "platform": "Amazon",
+    "proxy": "http://127.0.0.1:10809",
+    "proxy_display": "US New York (纽约独立IP)",
+    "cookies_status": "🟢 2FA认证中 (保持在线)",
+    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/127.0.0.0",
+    "last_active": "2026-10-02 22:40"
+  },
+  {
+    "id": "prof_global_whatsapp_03",
+    "name": "🌍 WhatsApp 跨境客服 01 号 (德国/中东区)",
+    "platform": "WhatsApp",
+    "proxy": "direct",
+    "proxy_display": "Direct (直连高稳路由)",
+    "cookies_status": "🟢 WhatsApp Web 已扫码在线",
+    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126.0.0.0",
+    "last_active": "2026-10-03 01:20"
+  }
+]

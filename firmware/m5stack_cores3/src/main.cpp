@@ -9,33 +9,43 @@
 #define FIRMWARE_VERSION "1.3.0"
 #define BOARD_NAME "m5stack-cores3"
 
-// 多设备切换枚举 (Marshall, AiMarshall, MacMini, MacPro)
+// 设备通道：4 设备通道架构 (已记住 Windows + 已记住 Mac + 新增 Win + 新增 Mac)
 enum BleDeviceChannel {
-  DEVICE_MARSHALL   = 0, // Marshall: 当前电脑 (Win 1)
-  DEVICE_AIMARSHALL = 1, // AiMarshall: 备用电脑 (Win 2)
-  DEVICE_MACMINI    = 2, // MacMini: Mac Mini (Mac 1)
-  DEVICE_MACPRO     = 3  // MacPro: MacBook Pro 2015 (Mac 2)
+  DEVICE_WIN_1        = 0, // 当前已绑定的 Windows 电脑 (Marshall)
+  DEVICE_MAC_1        = 1, // 当前已绑定的苹果电脑 (Mac)
+  DEVICE_PAIR_WIN_2   = 2, // ✨ 配对新 Windows 电脑 (Win 2)
+  DEVICE_PAIR_MAC_2   = 3  // ✨ 配对新苹果电脑 (Mac 2)
 };
 #define TOTAL_DEVICES 4
 uint8_t currentDevice = 0;
 
-static const char* devLabels[] = {"Marshall", "AiMarshall", "MacMini", "MacPro"};
-static const char* bleNames[]  = {"FlowDesk Marshall", "FlowDesk AiMarshall", "FlowDesk MacMini", "FlowDesk MacPro"};
+static const char* devLabels[] = {
+  "Windows 电脑",
+  "苹果电脑 (Mac)",
+  "新电脑 (Win 2)",
+  "新苹果 (Mac 2)"
+};
+static const char* bleNames[] = {
+  "FlowDesk Marshall", // Windows 永久识别，免重新配对
+  "FlowDesk Mac",      // Mac 永久识别，免重新配对
+  "FlowDesk PC 2",     // 新增 Win 独立广播名与 MAC
+  "FlowDesk Mac 2"     // 新增 Mac 独立广播名与 MAC
+};
 static const char* devToastNames[] = {
-  "切换设备: Marshall (当前电脑)",
-  "切换设备: AiMarshall (备用电脑)",
-  "切换设备: MacMini",
-  "切换设备: MacPro (MacBook Pro)"
+  "切换至: Windows 电脑",
+  "切换至: 苹果电脑 (Mac)",
+  "切换至: 新电脑 (Win 2)",
+  "切换至: 新苹果 (Mac 2)"
 };
 static const char* devGreetingNames[] = {
-  "已就绪: Marshall (当前电脑)",
-  "已就绪: AiMarshall (备用电脑)",
-  "已就绪: MacMini",
-  "已就绪: MacPro (MacBook Pro)"
+  "Windows 已就绪",
+  "Mac 已就绪",
+  "新电脑 已就绪",
+  "新苹果 已就绪"
 };
 
 inline bool isMacDevice(uint8_t dev) {
-  return (dev == DEVICE_MACMINI || dev == DEVICE_MACPRO);
+  return (dev == DEVICE_MAC_1 || dev == DEVICE_PAIR_MAC_2);
 }
 
 // PSRAM 双缓冲画布 (320x240，零闪烁高帧率)
@@ -51,18 +61,29 @@ UIStyle currentStyle = STYLE_APPLE_SIRI;
 
 // 设备工作模式 (三大独立 Tab 选项卡)
 enum DeviceMode {
-  MODE_CORES3_MIC       = 0,  // Tab 1: 云端语音 (CoreS3 硬件双麦 + 豆包 ASR)
-  MODE_BLE_REMOTE       = 1,  // Tab 1 子模式: 电脑遥控 (右Alt 触发电脑输入法 + 回车)
-  MODE_PAGE_FLIP        = 2,  // Tab 2: 翻页演讲 (PPT / 文档 上下翻页演讲遥控器)
-  MODE_MEDIA_CONTROL    = 3,  // Tab 3: 媒体控制 (音量调节、播放/暂停、上一曲/下一曲、一键静音)
-  MODE_SYSTEM_SHORTCUTS = 4,  // Tab 3 子模式: 系统快捷台 (截图、锁屏、桌面、切窗口)
-  MODE_TOUCH_MOUSE      = 5   // 触控鼠标 (高精度苹果触控板，指哪打哪)
+  MODE_BLE_REMOTE       = 0,  // Tab 1 子模式: 遥控 (短按右Alt 触发电脑自带输入法)
+  MODE_WIRELESS_MIC     = 1,  // Tab 1 子模式: 无线 (CoreS3 硬件双麦无线串流 -> 电脑微信输入法)
+  MODE_CORES3_MIC       = 2,  // Tab 1 子模式: 云端 (CoreS3 硬件双麦 + 独立 ASR)
+  MODE_PAGE_FLIP        = 3,  // Tab 2: 翻页演讲 (PPT / 文档 上下翻页演讲遥控器)
+  MODE_MEDIA_CONTROL    = 4,  // Tab 3: 媒体控制 (音量调节、播放/暂停、上一曲/下一曲、一键静音)
+  MODE_SYSTEM_SHORTCUTS = 5,  // Tab 3 子模式: 系统快捷台 (截图、锁屏、桌面、切窗口)
+  MODE_TOUCH_MOUSE      = 6   // 触控鼠标 (高精度苹果触控板，指哪打哪)
 };
 DeviceMode currentMode = MODE_BLE_REMOTE;
 
-// 记忆用户当前选定的语音与控制子模式 (默认“电脑遥控”极速模式，无需云端转写等待)
+// 记忆用户当前选定的语音与控制子模式 (默认“电脑遥控”极速模式)
 DeviceMode activeVoiceMode   = MODE_BLE_REMOTE;
 DeviceMode activeControlMode = MODE_SYSTEM_SHORTCUTS;
+
+inline bool isVoiceMode(DeviceMode m) {
+  return (m == MODE_BLE_REMOTE || m == MODE_WIRELESS_MIC || m == MODE_CORES3_MIC);
+}
+
+inline const char* getVoiceModeLabel(DeviceMode m) {
+  if (m == MODE_WIRELESS_MIC) return "无线";
+  if (m == MODE_CORES3_MIC) return "云端";
+  return "遥控";
+}
 
 // 运行状态
 enum BuddyEmotion {
@@ -82,6 +103,13 @@ struct SystemState {
   bool isBleVoiceActive = false;     // 模式2：输入法语音是否已开启
   uint32_t bleVoiceStartTime = 0;    // 模式2：语音开启时间戳
   uint32_t pendingReturnTime = 0;    // 延时回车计时器 (豆包 AI 整理转写专用延时)
+
+  // 智能双模录音交互：长按松手即发 + 点按启停保持
+  uint32_t micTouchDownTime = 0;
+  bool micIsHolding = false;
+  bool micWasLongPress = false;
+  bool micStartedByThisTouch = false;
+
   uint8_t sentNoticeState = 0;       // 0=无, 1=成功(绿), 2=失败(红)
   uint32_t sentNoticeUntil = 0;      // 提示框显示倒计时
   uint32_t pendingCancelClearTime = 0; // 延时全选清空计时器 (确保语音流完全落盘后清空)
@@ -142,6 +170,8 @@ struct SystemState {
   bool isDimmed = false;                // 是否处于低功耗微暗屏状态
   bool isScreenOff = false;             // 是否处于彻底熄屏休眠状态
   bool isSelectingDevice = false;       // 是否正在显示「4台设备选择菜单」弹窗
+  bool showConnectPrompt = false;       // 是否正在显示「主动连接邀请」弹窗
+  bool micSlideToCancel = false;        // 长按对讲时是否已滑入左下角取消区
   int brightness = 190;
   volatile int liveVoiceLevel = 0; // 实时声学反馈 0~40
   
@@ -169,9 +199,12 @@ int eyeLookOffsetY = 0;
 uint32_t nextLookTime = 0;
 String inputBuffer = "";
 
-void showToast(const String& msg, uint32_t durationMs = 1500) {
-  state.toastMsg = msg;
-  state.toastUntil = millis() + durationMs;
+void showToast(const String& msg, uint32_t durationMs = 1000) {
+  // 彻底静默，不跳任何遮挡屏幕的 Toast 悬浮框
+  (void)msg;
+  (void)durationMs;
+  state.toastUntil = 0;
+  state.toastMsg = "";
 }
 
 void setEmotion(BuddyEmotion emo, const String& msg, uint32_t durationMs = 3000) {
@@ -189,9 +222,9 @@ void switchDeviceChannel(uint8_t targetDevice) {
   p.putUChar("device", targetDevice);
   p.end();
 
-  showToast(devToastNames[targetDevice], 2500);
-  renderScreen();
-  delay(500);
+  // 关键：切换前优雅断开当前蓝牙连接，发送标准断开包，避免宿主电脑产生连接挂起或残留
+  BleCombo.disconnect();
+  delay(150);
   esp_restart();
 }
 
@@ -244,9 +277,9 @@ void drawAppleWaterRipples(int cx, int cy, uint32_t now) {
     canvas.fillCircle(cx, cy, coreR, 0xFD20);
     canvas.fillCircle(cx, cy, coreR - 5, TFT_WHITE);
 
-    // 水滴下方精致文字
+    // 水滴下方纯净倒计时
     canvas.setTextColor(0xFD20);
-    canvas.drawCenterString("倒计时 " + String(remainSec, 1) + "s 自动发送", cx, cy + 38);
+    canvas.drawCenterString("整理中 " + String(remainSec, 1) + "s", cx, cy + 38);
   } else {
     // 2. 待命/停止状态：完全平静的镜面湖水水滴 (用户赞赏的优美水纹)
     canvas.drawCircle(cx, cy, 34, 0x0256);
@@ -312,28 +345,23 @@ void drawClassicMicrophone(int cx, int cy, uint32_t now) {
   // 稳固底座横条
   canvas.fillRoundRect(cx - 18, micY + 54, 37, 4, 2, TFT_WHITE);
 
-  // 4. 下方状态文字提示
+  // 4. 下方状态 (极简纯净，绝无教学啰嗦文字)
   canvas.setTextSize(1);
   if (isActive) {
-    canvas.setTextColor(TFT_WHITE);
-    if (currentMode == MODE_CORES3_MIC) {
-      uint32_t sec = (now - state.recordingStartTime) / 1000;
-      canvas.drawCenterString("云端录音中 " + String(sec) + "s", cx, cy + 38);
+    if (state.micSlideToCancel) {
+      canvas.setTextColor(0xF800); // 警示红
+      canvas.drawCenterString("取消发送", cx, cy + 38);
     } else {
-      canvas.drawCenterString("正在录音 - 点击停止", cx, cy + 38);
+      uint32_t startT = (currentMode == MODE_CORES3_MIC) ? state.recordingStartTime : state.bleVoiceStartTime;
+      uint32_t sec = (now - startT) / 1000;
+      canvas.setTextColor(TFT_WHITE);
+      canvas.drawCenterString(String(sec) + "s", cx, cy + 38);
     }
   } else if (state.pendingReturnTime > 0) {
     uint32_t remainMs = (state.pendingReturnTime > now) ? (state.pendingReturnTime - now) : 0;
     float remainSec = (float)remainMs / 1000.0f;
-    canvas.setTextColor(0xFFE0); // 暖金倒计时提示
-    canvas.drawCenterString("整理中 " + String(remainSec, 1) + "s - 点击发送", cx, cy + 38);
-  } else {
-    canvas.setTextColor(0x9CD3); // 柔和灰白
-    if (currentMode == MODE_CORES3_MIC) {
-      canvas.drawCenterString("轻触中间开启云端识别", cx, cy + 38);
-    } else {
-      canvas.drawCenterString("轻触中间开启输入", cx, cy + 38);
-    }
+    canvas.setTextColor(0xFFE0); // 暖金倒计时
+    canvas.drawCenterString("整理中 " + String(remainSec, 1) + "s", cx, cy + 38);
   }
 }
 
@@ -640,7 +668,7 @@ void drawDynamicIsland() {
     canvas.drawRoundRect(6, 6, 114, 38, 8, 0x3186);
     canvas.setTextColor(0x7BEF);
     canvas.setTextSize(1);
-    canvas.drawCenterString(activeVoiceMode == MODE_BLE_REMOTE ? "电脑遥控" : "云端语音", 63, 18);
+    canvas.drawCenterString(getVoiceModeLabel(activeVoiceMode), 63, 18);
 
     canvas.fillRoundRect(126, 6, 114, 38, 8, 0x18C3);
     canvas.drawRoundRect(126, 6, 114, 38, 8, 0x3186);
@@ -651,30 +679,35 @@ void drawDynamicIsland() {
   }
 
   // ── Tab 1: 语音功能区 (X: 6, Y: 6, 宽 92, 高 38, R: 8) ──
-  // 支持 450ms 内双击直接在「云端语音」和「电脑遥控」之间平滑切换！
-  if (currentMode == MODE_CORES3_MIC) {
-    canvas.fillRoundRect(6, 6, 92, 38, 8, 0x0317);
-    canvas.drawRoundRect(6, 6, 92, 38, 8, 0x07FF);
+  // 支持 450ms 内双击直接在「遥控」、「无线」和「云端」之间平滑切换！
+  if (currentMode == MODE_WIRELESS_MIC) {
+    canvas.fillRoundRect(6, 6, 92, 38, 8, 0x0270);
+    canvas.drawRoundRect(6, 6, 92, 38, 8, 0x07E0);
     canvas.setTextColor(TFT_WHITE);
     canvas.setTextSize(1);
-    canvas.drawCenterString("云端语音", 52, 18);
+    canvas.drawCenterString("无线", 52, 18);
   } else if (currentMode == MODE_BLE_REMOTE) {
     canvas.fillRoundRect(6, 6, 92, 38, 8, 0x39C0);
     canvas.drawRoundRect(6, 6, 92, 38, 8, 0xFFE0);
     canvas.setTextColor(TFT_WHITE);
     canvas.setTextSize(1);
-    canvas.drawCenterString("电脑遥控", 52, 18);
+    canvas.drawCenterString("遥控", 52, 18);
+  } else if (currentMode == MODE_CORES3_MIC) {
+    canvas.fillRoundRect(6, 6, 92, 38, 8, 0x0317);
+    canvas.drawRoundRect(6, 6, 92, 38, 8, 0x07FF);
+    canvas.setTextColor(TFT_WHITE);
+    canvas.setTextSize(1);
+    canvas.drawCenterString("云端", 52, 18);
   } else {
-    // 当前处于翻页或控制模式：准确显示用户当前使用的语音模式 (解决状态跟不上的问题！)
+    // 当前处于翻页或控制模式：准确显示用户当前使用的语音模式
     canvas.fillRoundRect(6, 6, 92, 38, 8, 0x18C3);
     canvas.drawRoundRect(6, 6, 92, 38, 8, 0x3186);
     canvas.setTextColor(0x7BEF);
     canvas.setTextSize(1);
-    canvas.drawCenterString(activeVoiceMode == MODE_BLE_REMOTE ? "电脑遥控" : "云端语音", 52, 18);
+    canvas.drawCenterString(getVoiceModeLabel(activeVoiceMode), 52, 18);
   }
 
   // ── Tab 2: 翻页演讲区 (X: 102, Y: 6, 宽 88, 高 38, R: 8) ──
-  // 单击进入翻页；双击或长按 1.5 秒打开 4 台设备大选择菜单
   if (currentMode == MODE_PAGE_FLIP) {
     canvas.fillRoundRect(102, 6, 88, 38, 8, 0x0320);
     canvas.drawRoundRect(102, 6, 88, 38, 8, 0x07E0);
@@ -688,36 +721,37 @@ void drawDynamicIsland() {
   canvas.drawCenterString("翻页", 146, 18);
 
   // ── Tab 3: 控制中心区 (X: 194, Y: 6, 宽 98, 高 38, R: 8) ──
-  // 支持 450ms 内双击直接在「媒体控制」和「系统快捷」之间平滑切换！
+  // 支持 450ms 内双击直接在「媒体」和「快捷」之间平滑切换！
   if (currentMode == MODE_MEDIA_CONTROL) {
     canvas.fillRoundRect(194, 6, 98, 38, 8, 0x2965);
     canvas.drawRoundRect(194, 6, 98, 38, 8, 0x9CDF);
     canvas.setTextColor(TFT_WHITE);
     canvas.setTextSize(1);
-    canvas.drawCenterString("媒体控制", 243, 18);
+    canvas.drawCenterString("媒体", 243, 18);
   } else if (currentMode == MODE_SYSTEM_SHORTCUTS) {
     canvas.fillRoundRect(194, 6, 98, 38, 8, 0x3980);
     canvas.drawRoundRect(194, 6, 98, 38, 8, 0xFD20);
     canvas.setTextColor(TFT_WHITE);
     canvas.setTextSize(1);
-    canvas.drawCenterString("系统快捷", 243, 18);
+    canvas.drawCenterString("快捷", 243, 18);
   } else {
     canvas.fillRoundRect(194, 6, 98, 38, 8, 0x18C3);
     canvas.drawRoundRect(194, 6, 98, 38, 8, 0x3186);
     canvas.setTextColor(0x7BEF);
     canvas.setTextSize(1);
-    canvas.drawCenterString(activeControlMode == MODE_SYSTEM_SHORTCUTS ? "系统快捷" : "媒体控制", 243, 18);
+    canvas.drawCenterString(activeControlMode == MODE_SYSTEM_SHORTCUTS ? "快捷" : "媒体", 243, 18);
   }
 
-  // 蓝牙状态极简微指示点 (X: 298, Y: 25, 直径 4px)
+  // 顶栏右上角蓝牙状态指示点 (X: 298, Y: 25)
   bool bleConnected = BleCombo.isConnected();
   if (bleConnected) {
-    canvas.fillCircle(298, 25, 2, 0x07FF); // 已连接：稳定常亮纯净科技青
+    canvas.fillCircle(298, 25, 3, 0x07E0); // 纯正绿色常亮 (已连接)
   } else {
-    // 未连接：微弱柔和呼吸闪烁 (周期 1000ms)
-    uint32_t phase = millis() % 1000;
-    if (phase < 500) {
-      canvas.fillCircle(298, 25, 2, 0x0256); // 柔和深蓝
+    uint32_t phase = millis() % 1200;
+    if (phase < 600) {
+      canvas.fillCircle(298, 25, 3, 0xFFE0); // 暖黄色脉动 (广播等待连接中)
+    } else {
+      canvas.fillCircle(298, 25, 2, 0x0256); // 柔和深蓝底色
     }
   }
 
@@ -773,37 +807,45 @@ void drawBottomActionBar() {
       sendBgColor     = 0x0320;
       sendBorderColor = 0x07E0;
       sendTextColor   = TFT_WHITE;
-      sendLabel       = "✓ 已发送";
+      sendLabel       = "已发送";
     } else if (state.sentNoticeState == 2) {
       sendBgColor     = 0x4000;
       sendBorderColor = 0xF800;
       sendTextColor   = TFT_WHITE;
-      sendLabel       = "✕ 未发送";
+      sendLabel       = "未发送";
     }
   } else if (currentMode == MODE_CORES3_MIC && state.isRecordingVoice) {
     uint32_t sec = (millis() - state.recordingStartTime) / 1000;
     sendLabel = "完成 " + String(sec) + "s";
   }
 
-  if (currentMode == MODE_CORES3_MIC || currentMode == MODE_BLE_REMOTE) {
+  if (currentMode == MODE_CORES3_MIC || currentMode == MODE_BLE_REMOTE || currentMode == MODE_WIRELESS_MIC) {
     bool isMousePressed = (now < state.btnMouseHighlight);
     uint16_t mouseBgColor     = isMousePressed ? 0x0270 : 0x18C3;
     uint16_t mouseBorderColor = isMousePressed ? 0x07FF : 0x3186;
     uint16_t mouseTextColor   = isMousePressed ? TFT_WHITE : 0x07FF;
 
     // 1. 左下角：【取消】按钮 (严格匹配 Tab 1 尺寸 X: 6, Y: 196, 宽 92, 高 38)
-    canvas.fillRoundRect(6, 196, 92, 38, 8, cancelBgColor);
-    canvas.drawRoundRect(6, 196, 92, 38, 8, cancelBorderColor);
-    canvas.setTextColor(cancelTextColor);
-    canvas.setTextSize(1);
-    canvas.drawCenterString("取消", 52, 208);
+    if (state.micSlideToCancel) {
+      canvas.fillRoundRect(6, 196, 92, 38, 8, 0x3800);
+      canvas.drawRoundRect(6, 196, 92, 38, 8, 0xF800);
+      canvas.setTextColor(TFT_WHITE);
+      canvas.setTextSize(1);
+      canvas.drawCenterString("松手取消", 52, 208);
+    } else {
+      canvas.fillRoundRect(6, 196, 92, 38, 8, cancelBgColor);
+      canvas.drawRoundRect(6, 196, 92, 38, 8, cancelBorderColor);
+      canvas.setTextColor(cancelTextColor);
+      canvas.setTextSize(1);
+      canvas.drawCenterString("取消", 52, 208);
+    }
 
-    // 2. 正下方中间：【触控鼠标】(严格匹配 Tab 2 尺寸 X: 102, Y: 196, 宽 88, 高 38) - 100% 对称！
+    // 2. 正下方中间：【触控】(严格匹配 Tab 2 尺寸 X: 102, Y: 196, 宽 88, 高 38) - 100% 对称！
     canvas.fillRoundRect(102, 196, 88, 38, 8, mouseBgColor);
     canvas.drawRoundRect(102, 196, 88, 38, 8, mouseBorderColor);
     canvas.setTextColor(mouseTextColor);
     canvas.setTextSize(1);
-    canvas.drawCenterString("触控鼠标", 146, 208);
+    canvas.drawCenterString("触控", 146, 208);
 
     // 3. 右下角：【发送/完成/状态】(严格匹配 Tab 3 尺寸 X: 194, Y: 196, 宽 98, 高 38) - 100% 对称！
     canvas.fillRoundRect(194, 196, 98, 38, 8, sendBgColor);
@@ -815,84 +857,72 @@ void drawBottomActionBar() {
 }
 
 // ==========================================
-// 4 台设备选择菜单 (卡片式触摸面板)
+// 设备管理菜单 (4 设备通道：已记住 Windows + 已记住 Mac + 新增 Win + 新增 Mac)
 // ==========================================
 void drawDeviceSelectorModal() {
   canvas.fillScreen(TFT_BLACK);
 
-  // 1. 顶部标题栏 (Y: 6 ~ 34)
+  // 1. 顶部标题栏 (Y: 6 ~ 32)
   canvas.setTextColor(TFT_WHITE);
   canvas.setTextSize(1);
-  canvas.drawString("请选择要连接的设备", 14, 12);
+  canvas.drawString("设备管理 (已记住 2 台主机)", 12, 10);
 
-  // 右上角【返回】按钮 (X: 248, Y: 6, W: 58, H: 26, R: 6)
-  canvas.fillRoundRect(248, 6, 58, 26, 6, 0x18C3);
-  canvas.drawRoundRect(248, 6, 58, 26, 6, 0x52AA);
+  // 右上角【返回】按钮 (X: 252, Y: 6, W: 58, H: 24, R: 6)
+  canvas.fillRoundRect(252, 6, 58, 24, 6, 0x18C3);
+  canvas.drawRoundRect(252, 6, 58, 24, 6, 0x52AA);
   canvas.setTextColor(0xD69A);
-  canvas.drawCenterString("返回", 277, 12);
+  canvas.drawCenterString("返回", 281, 10);
 
-  // 2. 4 个设备大卡片 (2x2 布局，超大触控面积，手指秒点)
-  const int cardX[4] = {14, 166, 14, 166};
-  const int cardY[4] = {38, 38, 134, 134};
-  const int cardW = 140;
-  const int cardH = 88;
+  // 2. 渲染 4 张大卡片 (2 行 x 2 列)
+  auto drawCard = [&](int devIndex, int x, int y, const char* title, const char* subtitle, bool isNewPair) {
+    bool isCur = (currentDevice == devIndex);
+    bool isConn = isCur && BleCombo.isConnected();
+    uint16_t bgColor     = isConn ? 0x0270 : (isCur ? 0x2124 : 0x18C3);
+    uint16_t borderColor = isConn ? 0x07E0 : (isCur ? 0x07FF : 0x3186);
 
-  const char* descs[4] = {"当前电脑", "备用电脑", "Mac Mini", "MacBook Pro"};
+    canvas.fillRoundRect(x, y, 144, 82, 8, bgColor);
+    canvas.drawRoundRect(x, y, 144, 82, 8, borderColor);
 
-  for (int i = 0; i < TOTAL_DEVICES; ++i) {
-    bool isCurrent = (currentDevice == i);
-    uint16_t bgColor     = isCurrent ? 0x0270 : 0x18C3;
-    uint16_t borderColor = isCurrent ? 0x07FF : 0x3186;
-    uint16_t titleColor   = isCurrent ? 0x07FF : TFT_WHITE;
-    uint16_t descColor    = isCurrent ? TFT_WHITE : 0x9CD3;
-
-    canvas.fillRoundRect(cardX[i], cardY[i], cardW, cardH, 10, bgColor);
-    canvas.drawRoundRect(cardX[i], cardY[i], cardW, cardH, 10, borderColor);
-
-    // 主标题 (如 "Marshall", "AiMarshall", "MacMini", "MacPro")
-    canvas.setTextColor(titleColor);
-    if (strlen(devLabels[i]) >= 9) {
-      canvas.setTextSize(1);
-      canvas.drawString(devLabels[i], cardX[i] + 12, cardY[i] + 16);
-    } else {
-      canvas.setTextSize(2);
-      canvas.drawString(devLabels[i], cardX[i] + 12, cardY[i] + 12);
-    }
-
-    // 描述 (如 "当前电脑", "Mac Mini")
-    canvas.setTextColor(descColor);
+    canvas.setTextColor(isCur ? (isConn ? 0x07E0 : 0x07FF) : TFT_WHITE);
     canvas.setTextSize(1);
-    canvas.drawString(descs[i], cardX[i] + 12, cardY[i] + 40);
+    canvas.drawString(title, x + 8, y + 8);
 
-    // 状态小徽标
-    if (isCurrent) {
-      canvas.fillRoundRect(cardX[i] + 12, cardY[i] + 62, 70, 18, 4, 0x0320);
+    canvas.setTextColor(0x9CD3);
+    canvas.drawString(subtitle, x + 8, y + 28);
+
+    if (isConn) {
+      canvas.fillRoundRect(x + 8, y + 52, 62, 18, 4, 0x0320);
       canvas.setTextColor(0x07E0);
-      canvas.drawString("已连接", cardX[i] + 22, cardY[i] + 65);
+      canvas.drawString("已连接", x + 14, y + 55);
+    } else if (isCur) {
+      canvas.fillRoundRect(x + 8, y + 52, 84, 18, 4, isNewPair ? 0x4200 : 0x3186);
+      canvas.setTextColor(isNewPair ? 0xFD20 : 0xFFE0);
+      canvas.drawString(isNewPair ? "等待配对..." : "等待连接...", x + 12, y + 55);
     } else {
-      canvas.setTextColor(0x7BEF);
-      canvas.drawString("轻触切换", cardX[i] + 12, cardY[i] + 65);
+      canvas.setTextColor(0x52AA);
+      canvas.drawString(isNewPair ? "轻触开始配对" : "轻触切换至此", x + 8, y + 55);
     }
-  }
+  };
 
-  // 3. 浮层 Toast (若有提示)
-  uint32_t now = millis();
-  if (now < state.toastUntil && state.toastMsg.length() > 0) {
-    int tw = canvas.textWidth(state.toastMsg) + 24;
-    int tx = (320 - tw) / 2;
-    canvas.fillRoundRect(tx, 96, tw, 36, 18, 0x18C3);
-    canvas.drawRoundRect(tx, 96, tw, 36, 18, 0x07FF);
-    canvas.setTextColor(0x07FF);
-    canvas.setTextSize(1);
-    canvas.drawCenterString(state.toastMsg, 160, 108);
-  }
+  // 第一行：已记住的 2 台设备
+  drawCard(DEVICE_WIN_1,      10,  38, "Windows 电脑", "已记住 • FlowDesk", false);
+  drawCard(DEVICE_MAC_1,      166, 38, "苹果电脑 (Mac)", "已记住 • FlowDesk", false);
+
+  // 第二行：新增配对的 2 个通道
+  drawCard(DEVICE_PAIR_WIN_2, 10,  126, "新电脑 (Win 2)", "配对新机 • 免删旧", true);
+  drawCard(DEVICE_PAIR_MAC_2, 166, 126, "新苹果 (Mac 2)", "配对新机 • 免删旧", true);
+
+  // 4. 底部提示 (Y: 216)
+  canvas.setTextColor(0x52AA);
+  canvas.drawCenterString("提示: 蓝牙配对一次永久记住，自由切换无需删设备！", 160, 216);
+
 }
 
 // 刷新整屏 (通过 PSRAM 双缓冲渲染)
 void renderScreen() {
   uint32_t now = millis();
 
-  // 如果处于设备选择菜单弹窗，优先推画选择面板
+  // 如果处于设备选择菜单，推画 4 台设备卡片选择面板
   if (state.isSelectingDevice) {
     drawDeviceSelectorModal();
     canvas.pushSprite(0, 0);
@@ -954,7 +984,7 @@ void renderScreen() {
   } else if (currentMode == MODE_TOUCH_MOUSE) {
     // ── 触控鼠标模式 (MacBook 触控板) ──
     drawTouchMouseView(now);
-  } else if (currentMode == MODE_BLE_REMOTE || currentMode == MODE_CORES3_MIC) {
+  } else if (currentMode == MODE_BLE_REMOTE || currentMode == MODE_CORES3_MIC || currentMode == MODE_WIRELESS_MIC) {
     // ── Tab 1: 经典黑白麦克风 + 声波辐射扩散 ──
     drawClassicMicrophone(160, 110, now);
   }
@@ -975,6 +1005,55 @@ void renderScreen() {
 
   // DMA 高速推入屏幕
   canvas.pushSprite(0, 0);
+}
+
+// ==========================================
+// IMA-ADPCM 极速音频压缩编码器 (4:1 压缩比，128采样点仅需64字节，BLE极速吞吐)
+// ==========================================
+static const int16_t adpcmStepTable[89] = {
+    7, 8, 9, 10, 11, 12, 13, 14, 16, 17, 19, 21, 23, 25, 28, 31, 34, 37, 41, 45,
+    50, 55, 60, 66, 73, 80, 88, 97, 107, 118, 130, 143, 157, 173, 190, 209, 230,
+    253, 279, 307, 337, 371, 408, 449, 494, 544, 598, 658, 724, 796, 876, 963,
+    1060, 1166, 1282, 1411, 1552, 1707, 1878, 2066, 2272, 2499, 2749, 3024, 3327,
+    3660, 4026, 4428, 4871, 5358, 5894, 6484, 7132, 7845, 8630, 9493, 10442, 11487,
+    12635, 13899, 15289, 16818, 18500, 20350, 22385, 24623, 27086, 29794, 32767
+};
+static const int8_t adpcmIndexTable[16] = {
+    -1, -1, -1, -1, 2, 4, 6, 8,
+    -1, -1, -1, -1, 2, 4, 6, 8
+};
+static int16_t adpcmPredicted = 0;
+static int8_t  adpcmIndex = 0;
+
+static inline uint8_t encodeAdpcmSample(int16_t sample) {
+  int16_t step = adpcmStepTable[adpcmIndex];
+  int32_t diff = sample - adpcmPredicted;
+  uint8_t code = 0;
+  if (diff < 0) {
+    code = 8;
+    diff = -diff;
+  }
+  int32_t tempStep = step;
+  if (diff >= tempStep) { code |= 4; diff -= tempStep; }
+  tempStep >>= 1;
+  if (diff >= tempStep) { code |= 2; diff -= tempStep; }
+  tempStep >>= 1;
+  if (diff >= tempStep) { code |= 1; }
+
+  int32_t diffq = step >> 3;
+  if (code & 4) diffq += step;
+  if (code & 2) diffq += step >> 1;
+  if (code & 1) diffq += step >> 2;
+  if (code & 8) adpcmPredicted -= diffq;
+  else adpcmPredicted += diffq;
+  if (adpcmPredicted > 32767) adpcmPredicted = 32767;
+  else if (adpcmPredicted < -32768) adpcmPredicted = -32768;
+
+  adpcmIndex += adpcmIndexTable[code & 0x0F];
+  if (adpcmIndex < 0) adpcmIndex = 0;
+  else if (adpcmIndex > 88) adpcmIndex = 88;
+
+  return code;
 }
 
 // ==========================================
@@ -1006,6 +1085,18 @@ void audioStreamTask(void* parameter) {
           }
           state.liveVoiceLevel = maxAmp / 500;
 
+          // 1. 无线 BLE 音频串流 (极速 ADPCM 压缩，64字节直接通过 BLE Notify 广播给电脑网桥)
+          if (BleCombo.isConnected()) {
+            uint8_t adpcmChunk[SAMPLES_PER_CHUNK / 2];
+            for (size_t i = 0; i < SAMPLES_PER_CHUNK; i += 2) {
+              uint8_t h = encodeAdpcmSample(pcmBuffer[i]);
+              uint8_t l = encodeAdpcmSample(pcmBuffer[i + 1]);
+              adpcmChunk[i / 2] = (h << 4) | (l & 0x0F);
+            }
+            BleCombo.sendVoicePacket(adpcmChunk, sizeof(adpcmChunk));
+          }
+
+          // 2. 有线/串口 Hex 串流 (兼容本地 USB 测试)
           const uint8_t* rawBytes = (const uint8_t*)pcmBuffer;
           size_t outIdx = 2;
           for (size_t i = 0; i < SAMPLES_PER_CHUNK * 2; ++i) {
@@ -1127,6 +1218,38 @@ void handleCommandLine(const String& line) {
       setEmotion(EMOTION_IDLE, "", 0);
     }
     Serial.println("{\"ok\":true,\"buddy\":true}");
+    return;
+  }
+
+  if (line.startsWith("CMD:DEV:")) {
+    int dev = line.substring(8).toInt();
+    if (dev >= 0 && dev < TOTAL_DEVICES) {
+      Serial.printf("{\"ok\":true,\"switched_dev\":%d}\n", dev);
+      switchDeviceChannel((uint8_t)dev);
+    }
+    return;
+  }
+
+  if (line.startsWith("CMD:VOICE_MODE:")) {
+    int vm = line.substring(15).toInt();
+    if (isVoiceMode((DeviceMode)vm)) {
+      activeVoiceMode = (DeviceMode)vm;
+      currentMode = activeVoiceMode;
+      Preferences p;
+      p.begin("flowdesk", false);
+      p.putUChar("voice_mode", (uint8_t)activeVoiceMode);
+      p.end();
+      showToast(getVoiceModeLabel(activeVoiceMode), 1000);
+      renderScreen();
+      Serial.printf("{\"ok\":true,\"voice_mode\":%d}\n", vm);
+    }
+    return;
+  }
+
+  if (line == "CMD:STATUS") {
+    Serial.printf("{\"ok\":true,\"dev\":%d,\"dev_name\":\"%s\",\"voice_mode\":%d,\"mode_name\":\"%s\",\"ble_conn\":%s}\n",
+      currentDevice, bleNames[currentDevice], activeVoiceMode, getVoiceModeLabel(activeVoiceMode), BleCombo.isConnected() ? "true" : "false");
+    return;
   }
 }
 
@@ -1162,6 +1285,7 @@ void setup() {
   M5.Mic.begin();
 
   Serial.begin(115200);
+  Serial.println("[BOOT] FlowDesk CoreS3 booted successfully!");
 
   // 创建独立的 FreeRTOS 音频采集与流式推流任务 (固定在 Core 0，杜绝与 Core 1 抢占)
   xTaskCreatePinnedToCore(
@@ -1181,15 +1305,15 @@ void setup() {
   activeVoiceMode = (DeviceMode)p.getUChar("voice_mode", (uint8_t)MODE_BLE_REMOTE);
   p.end();
   if (currentDevice >= TOTAL_DEVICES) currentDevice = 0;
-  if (activeVoiceMode != MODE_CORES3_MIC && activeVoiceMode != MODE_BLE_REMOTE) {
+  if (!isVoiceMode(activeVoiceMode)) {
     activeVoiceMode = MODE_BLE_REMOTE;
   }
   currentMode = activeVoiceMode;
 
-  // 为 4 台设备配置独立的物理蓝牙 MAC 地址，彻底杜绝串台与设备抢占
+  // 为多台设备配置独立的物理蓝牙 MAC 地址，以硬件 eFuse 为物理基准，杜绝软重启漂移与设备抢占
   uint8_t baseMac[6];
-  if (esp_read_mac(baseMac, ESP_MAC_BT) == ESP_OK) {
-    baseMac[5] = (baseMac[5] & 0xFC) | currentDevice;
+  if (esp_efuse_mac_get_default(baseMac) == ESP_OK) {
+    baseMac[5] = (baseMac[5] & 0xF8) | (currentDevice & 0x07);
     esp_base_mac_addr_set(baseMac);
   }
 
@@ -1201,7 +1325,7 @@ void setup() {
   state.lastUserActionTime = millis();
   state.cachedBattery = M5.Power.getBatteryLevel();
 
-  showToast(devGreetingNames[currentDevice], 1800);
+  showToast(devGreetingNames[currentDevice], 1000);
   renderScreen();
 }
 
@@ -1209,10 +1333,10 @@ void loop() {
   M5.update();
   uint32_t now = millis();
 
-  // 1. 极致顺滑、100% 灵敏的触控捕获 (结合硬件原生计数器与 Detail 状态，彻底杜绝丢步)
+  // 1. 极致顺滑、100% 灵敏的触控捕获 (结合硬件原生计数器与 Detail 状态，指落即动，抬指即解)
   auto touch = M5.Touch.getDetail();
   uint8_t touchCount = M5.Touch.getCount();
-  bool isTouching = (touchCount > 0) || touch.isPressed() || touch.wasPressed() || touch.wasClicked();
+  bool isTouching = (touchCount > 0) || touch.isPressed() || touch.wasPressed();
   static bool touchLatched = false; // 严格单次按下锁
   static uint32_t tab2PressStart = 0;
   static bool tab2LongTriggered = false;
@@ -1269,31 +1393,31 @@ void loop() {
       if (!touchLatched) {
         touchLatched = true;
 
-        // 点击右上角【返回】或顶部标题栏 (ty <= 36)
-        if (ty <= 36) {
+        // 点击右上角【返回】或顶部标题栏 (ty <= 34)
+        if (ty <= 34) {
           state.isSelectingDevice = false;
           renderScreen();
           return;
         }
 
-        // 判定 4 张卡片点击 (超大判定区，绝不失手)
+        // 判定 4 张大卡片点击 (2 行 x 2 列)
         int selectedDev = -1;
-        if (ty >= 38 && ty <= 126) {
-          if (tx >= 14 && tx <= 154) selectedDev = 0; // Win 1: Marshall
-          else if (tx >= 166 && tx <= 306) selectedDev = 1; // Win 2: AiMarshall
-        } else if (ty >= 134 && ty <= 222) {
-          if (tx >= 14 && tx <= 154) selectedDev = 2; // Mac 1: MacMini
-          else if (tx >= 166 && tx <= 306) selectedDev = 3; // Mac 2: MacPro
+        if (ty >= 38 && ty <= 120) {
+          if (tx >= 10 && tx <= 154) selectedDev = DEVICE_WIN_1;
+          else if (tx >= 166 && tx <= 310) selectedDev = DEVICE_MAC_1;
+        } else if (ty >= 126 && ty <= 208) {
+          if (tx >= 10 && tx <= 154) selectedDev = DEVICE_PAIR_WIN_2;
+          else if (tx >= 166 && tx <= 310) selectedDev = DEVICE_PAIR_MAC_2;
         }
 
         if (selectedDev >= 0) {
           if (selectedDev == currentDevice) {
-            // 点击的是当前已经在用的设备 -> 直接关闭菜单
+            // 点击的是当前已经在用的设备 -> 直接关闭菜单并提示
             state.isSelectingDevice = false;
             showToast(String("保持连接: ") + devLabels[currentDevice], 1200);
             renderScreen();
           } else {
-            // 点击了新设备 -> 立即切换至该设备通道！
+            // 切换通道或者开始新配对！
             state.isSelectingDevice = false;
             switchDeviceChannel((uint8_t)selectedDev);
           }
@@ -1310,7 +1434,7 @@ void loop() {
 
     // ── 情况 2: 正常工作界面中的长按与点击 ──
     // 1. 长按顶栏「翻页」Tab (tx >= 98 && tx < 192) 1.5 秒：唤出「选择连接设备」大菜单！
-    if (ty <= 50 && tx >= 98 && tx < 192) {
+    if (currentMode != MODE_TOUCH_MOUSE && ty <= 50 && tx >= 98 && tx < 192) {
       if (tab2PressStart == 0) tab2PressStart = now;
       if (!tab2LongTriggered && (now - tab2PressStart >= 1500)) {
         tab2LongTriggered = true;
@@ -1325,6 +1449,36 @@ void loop() {
 
     // ── 触控鼠标模式交互区 ──
     if (currentMode == MODE_TOUCH_MOUSE) {
+      // 🌟 优先级 1：顶栏 Tab 导航按键 (ty <= 54 && tx < 244)
+      // 彻底解决切出困难！只要手指触碰顶栏区域（放宽至 54px 覆盖大拇指肉垫），100% 优先作为「切回语音」或「切到翻页」！
+      if (ty <= 54 && tx < 244) {
+        if (!touchLatched) {
+          touchLatched = true;
+          // 彻底清空触控板状态，绝不向电脑误发鼠标移动或抬手单击
+          state.mouseTouchStartTime = 0;
+          state.mouseTouchStartX = 0;
+          state.mouseTouchStartY = 0;
+          state.mouseLastX = -1;
+          state.mouseLastY = -1;
+          state.mouseInScrollStrip = false;
+          state.mouseVisualX = -1;
+          state.mouseVisualY = -1;
+
+          if (tx < 124) {
+            // 点击 Tab 1: 准确切回当前使用的语音模式 (无线 / 遥控 / 云端)
+            currentMode = activeVoiceMode;
+            showToast(getVoiceModeLabel(activeVoiceMode), 1000);
+            renderScreen();
+          } else {
+            // 点击 Tab 2: 切到翻页
+            currentMode = MODE_PAGE_FLIP;
+            showToast("翻页", 1000);
+            renderScreen();
+          }
+        }
+        return;
+      }
+
       if (touchCount > state.mouseMaxFingers) {
         state.mouseMaxFingers = touchCount;
       }
@@ -1405,8 +1559,8 @@ void loop() {
         return;
       }
 
-      // ── 分流 2：左侧高精度触控板主域 (tx < 244 && ty > 46) ──
-      if (ty > 46) {
+      // ── 分流 2：左侧高精度触控板主域 (tx < 244 && ty > 54) ──
+      if (ty > 54) {
         state.mouseInScrollStrip = false;
         state.mouseVisualX = tx;
         state.mouseVisualY = ty;
@@ -1462,22 +1616,31 @@ void loop() {
         }
         return;
       }
+      return;
+    }
 
-      // ── 分流 3：顶栏 Tab 导航 (tx < 244 && ty <= 46) ──
-      if (!touchLatched) {
-        touchLatched = true;
-        if (tx < 120) {
-          // 点击 Tab 1: 返回语音 / 电脑遥控
-          currentMode = activeVoiceMode;
-          showToast(activeVoiceMode == MODE_BLE_REMOTE ? "已返回: 电脑遥控" : "已返回: 云端语音", 1000);
-          renderScreen();
-        } else {
-          // 点击 Tab 2: 切到翻页
-          currentMode = MODE_PAGE_FLIP;
-          renderScreen();
+    // 实时检测麦克风区域长按状态 (按住超过 500ms 即判定为长按对讲，触发动效与提示)
+    if (state.micIsHolding && (currentMode == MODE_CORES3_MIC || currentMode == MODE_BLE_REMOTE || currentMode == MODE_WIRELESS_MIC)) {
+      if (now - state.micTouchDownTime >= 500 && !state.micWasLongPress) {
+        state.micWasLongPress = true;
+        renderScreen();
+      }
+
+      // 微信级对讲手感：长按对讲过程中，手指往左下角滑动即进入「滑向取消」准备状态！
+      if (state.micWasLongPress || (now - state.micTouchDownTime >= 400)) {
+        if (tx <= 120 && ty >= 160) {
+          if (!state.micSlideToCancel) {
+            state.micSlideToCancel = true;
+            renderScreen();
+          }
+          state.btnCancelHighlightUntil = now + 160; // 持续高亮左下角取消红框
+        } else if (tx > 140 || ty < 145) {
+          if (state.micSlideToCancel) {
+            state.micSlideToCancel = false;
+            renderScreen();
+          }
         }
       }
-      return;
     }
 
     if (!touchLatched) {
@@ -1487,25 +1650,32 @@ void loop() {
       if (ty <= 50) {
         if (tx < 98) {
           // ── 点击 Tab 1: 语音功能区 ──
-          if (currentMode != MODE_CORES3_MIC && currentMode != MODE_BLE_REMOTE) {
-            // 从翻页或控制切回语音 (准确恢复记忆的云端或电脑遥控)
+          if (!isVoiceMode(currentMode)) {
+            // 从翻页或控制切回语音 (准确恢复记忆的语音子模式)
             currentMode = activeVoiceMode;
             lastVoiceTabClick = now;
             renderScreen();
           } else {
             // 当前已经在语音模式：检测是否在 450ms 内双击！
             if (now - lastVoiceTabClick < 450 && lastVoiceTabClick > 0) {
-              if (currentMode == MODE_CORES3_MIC) {
+              if (currentMode == MODE_BLE_REMOTE) {
+                if (state.isBleVoiceActive) state.isBleVoiceActive = false;
+                state.pendingReturnTime = 0;
+                currentMode = MODE_WIRELESS_MIC;
+                activeVoiceMode = MODE_WIRELESS_MIC;
+                showToast("无线", 1000);
+              } else if (currentMode == MODE_WIRELESS_MIC) {
                 if (state.isRecordingVoice) cancelVoiceRecording();
-                currentMode = MODE_BLE_REMOTE;
-                activeVoiceMode = MODE_BLE_REMOTE;
-                showToast("已切换: 电脑遥控", 1500);
-              } else {
                 if (state.isBleVoiceActive) state.isBleVoiceActive = false;
                 state.pendingReturnTime = 0;
                 currentMode = MODE_CORES3_MIC;
                 activeVoiceMode = MODE_CORES3_MIC;
-                showToast("已切换: 云端语音", 1500);
+                showToast("云端", 1000);
+              } else {
+                if (state.isRecordingVoice) cancelVoiceRecording();
+                currentMode = MODE_BLE_REMOTE;
+                activeVoiceMode = MODE_BLE_REMOTE;
+                showToast("遥控", 1000);
               }
               Preferences p;
               p.begin("flowdesk", false);
@@ -1528,7 +1698,7 @@ void loop() {
             lastPageTabClick = now;
             renderScreen();
           } else {
-            // 当前已经在翻页模式：检测双击打开设备选择菜单！
+            // 当前已经在翻页模式：检测 450ms 内双击唤出 4 台设备选择菜单！
             if (now - lastPageTabClick < 450 && lastPageTabClick > 0) {
               state.isSelectingDevice = true; // 双击唤出 4 台设备选择菜单！
               lastPageTabClick = 0;
@@ -1549,16 +1719,14 @@ void loop() {
             lastControlTabClick = now;
             renderScreen();
           } else {
-            // 当前已经在控制模式：检测是否在 450ms 内双击！
+            // 当前已经在控制模式：检测是否在 450ms 内双击切换「媒体」与「快捷」！
             if (now - lastControlTabClick < 450 && lastControlTabClick > 0) {
               if (currentMode == MODE_MEDIA_CONTROL) {
                 currentMode = MODE_SYSTEM_SHORTCUTS;
                 activeControlMode = MODE_SYSTEM_SHORTCUTS;
-                showToast("已切换: 系统快捷台", 1500);
               } else {
                 currentMode = MODE_MEDIA_CONTROL;
                 activeControlMode = MODE_MEDIA_CONTROL;
-                showToast("已切换: 媒体控制台", 1500);
               }
               lastControlTabClick = 0;
             } else {
@@ -1763,24 +1931,41 @@ void loop() {
             setEmotion(EMOTION_IDLE, "已取消", 800);
           }
         } else if (ty >= 185 && tx >= 100 && tx < 192) {
-          // 正下方中间：一键进入【触控鼠标】模式！
+          // 正下方中间：一键进入【触控】模式！
           state.btnMouseHighlight = now + 250;
           currentMode = MODE_TOUCH_MOUSE;
-          showToast("高精度触控板", 1000);
+          showToast("触控", 1000);
         } else if (ty >= 185 && tx >= 192) {
           // 右下角：【完成】发送 (点亮按键高亮变色 250ms)
           state.btnSendHighlightUntil = now + 250;
+          state.micIsHolding = false;
+          state.micTouchDownTime = 0;
+          state.micWasLongPress = false;
+          state.micStartedByThisTouch = false;
           if (state.isRecordingVoice) {
             stopVoiceRecording();
           } else {
             startVoiceRecording();
           }
         } else {
-          // 上半部分麦克风 (Y < 185 整个超大区域)：点击切换录音/发送
-          if (state.isRecordingVoice) {
-            stopVoiceRecording();
-          } else {
-            startVoiceRecording();
+          // 上半部分麦克风 (Y < 185 整个超大区域)：智能双模 (长按松手即发 + 点按启停)
+          if (!state.micIsHolding) {
+            state.micIsHolding = true;
+            state.micTouchDownTime = now;
+            state.micWasLongPress = false;
+            if (!state.isRecordingVoice) {
+              startVoiceRecording();
+              state.micStartedByThisTouch = true;
+            } else {
+              // 已经在录音中：若是点按第二下，立即结束录音并推送识别！
+              if (now - state.recordingStartTime >= 300) {
+                stopVoiceRecording();
+                state.micStartedByThisTouch = false;
+                showToast("已发送", 800);
+              } else {
+                state.micStartedByThisTouch = false;
+              }
+            }
           }
         }
         renderScreen();
@@ -1792,6 +1977,10 @@ void loop() {
           state.btnCancelHighlightUntil = now + 250; // 点亮按键高亮变色 250ms
           state.sentNoticeUntil = 0; // 彻底清除任何状态，绝无任何错位绿框！
           state.sentNoticeState = 0;
+          state.micIsHolding = false;
+          state.micTouchDownTime = 0;
+          state.micWasLongPress = false;
+          state.micStartedByThisTouch = false;
           bool wasActive = state.isBleVoiceActive;
           bool wasPending = (state.pendingReturnTime > 0);
           state.isBleVoiceActive = false;
@@ -1805,34 +1994,31 @@ void loop() {
             return;
           }
 
-          // 立即关闭输入法语音录音
+          if (currentMode == MODE_WIRELESS_MIC && wasActive) {
+            cancelVoiceRecording();
+          }
           if (BleCombo.isConnected()) {
-            if (wasActive && !isMacDevice(currentDevice)) {
+            if (wasActive) {
               BleCombo.pressRightAlt();
               BleCombo.releaseRightAlt();
             }
-            BleCombo.pressKey(0, HID_KEY_ESCAPE);
-            BleCombo.releaseAllKeys();
           }
           if (wasActive) Serial.println("CMD:right_alt");
-          Serial.println("CMD:escape");
 
-          // 核心优化：两段式全选清空防残存机制
-          // 第 1 阶段：650ms 充分留出输入法语音识别文字完全落盘/打到窗口的时间
-          // 第 2 阶段：自动触发二次扫尾，彻底根除任何残存字！
+          // 核心优化：延时 1.8 秒等微信输入法文字完全落盘，然后在保持焦点的输入框内自动全选清空
           state.pendingCancelClearStage = 1;
-          state.pendingCancelClearTime = now + 650;
-          setEmotion(EMOTION_IDLE, "正在清空...", 1200);
+          state.pendingCancelClearTime = now + 1800;
+          showToast("已取消 • 清理中", 1800);
           renderScreen();
           return;
         }
 
-        // 2. 正下方中间【触控鼠标】判定区 (ty >= 185 && tx >= 100 && tx < 192)
+        // 2. 正下方中间【触控】判定区 (ty >= 185 && tx >= 100 && tx < 192)
         if (ty >= 185 && tx >= 100 && tx < 192) {
           state.btnMouseHighlight = now + 250;
           currentMode = MODE_TOUCH_MOUSE;
           Serial.println("MODE:TOUCH_MOUSE");
-          showToast("高精度触控板", 1000);
+          showToast("触控", 1000);
           renderScreen();
           return;
         }
@@ -1840,57 +2026,178 @@ void loop() {
         // 3. 右下大区域【发送】判定区 (ty >= 185 && tx >= 192)
         if (ty >= 185 && tx >= 192) {
           state.btnSendHighlightUntil = now + 250;
-          state.pendingReturnTime = 0;
+          state.micIsHolding = false;
+          state.micTouchDownTime = 0;
+          state.micWasLongPress = false;
+          state.micStartedByThisTouch = false;
           bool wasActive = state.isBleVoiceActive;
           state.isBleVoiceActive = false;
 
-          if (BleCombo.isConnected()) {
-            if (wasActive && !isMacDevice(currentDevice)) {
-              BleCombo.pressRightAlt();
-              BleCombo.releaseRightAlt();
-              delay(30);
-            }
-            BleCombo.pressKey(0, BLE_KEY_RETURN);
-            BleCombo.releaseAllKeys();
+          if (currentMode == MODE_WIRELESS_MIC && wasActive) {
+            stopVoiceRecording();
           }
-          if (wasActive) Serial.println("CMD:right_alt");
-          Serial.println("CMD:enter");
-          state.cmdEnterSentTime = now;
+          if (BleCombo.isConnected()) {
+            if (wasActive) {
+              BleCombo.pressRightAlt();
+              delay(45);
+              BleCombo.releaseRightAlt();
+              state.pendingReturnTime = now + 1800; // 延时 1.8s 倒计时，留足输入法整理文字时间
+              Serial.println("CMD:right_alt");
+              showToast("整理中 • 倒计时发送", 1200);
+            } else {
+              state.pendingReturnTime = 0;
+              BleCombo.pressKey(0, BLE_KEY_RETURN);
+              delay(25);
+              BleCombo.releaseAllKeys();
+              Serial.println("CMD:enter");
+              state.cmdEnterSentTime = now;
+            }
+          }
           renderScreen();
           return;
         }
 
-        // 4. 上半部分巨大麦克风区域 (ty < 185)：开关语音输入 / 提前发送
+        // 4. 上半部分巨大麦克风区域 (ty < 185)：智能双模 (长按松手即发 + 点按启停)
         if (state.pendingReturnTime > 0) {
+          // 倒计时中再次点按：用户无需等待，立即提前敲回车发送！
           state.pendingReturnTime = 0;
           if (BleCombo.isConnected()) {
             BleCombo.pressKey(0, BLE_KEY_RETURN);
+            delay(25);
             BleCombo.releaseAllKeys();
           }
           Serial.println("CMD:enter");
           state.cmdEnterSentTime = now;
-        } else if (!state.isBleVoiceActive) {
-          state.isBleVoiceActive = true;
-          state.bleVoiceStartTime = now;
-          if (BleCombo.isConnected()) {
-            BleCombo.pressRightAlt();
-            BleCombo.releaseRightAlt();
+          showToast("已发送", 800);
+          renderScreen();
+          return;
+        }
+
+        if (!state.micIsHolding) {
+          state.micIsHolding = true;
+          state.micTouchDownTime = now;
+          state.micWasLongPress = false;
+
+          state.pendingCancelClearTime = 0; // 中止之前的延时清空
+          state.pendingCancelClearStage = 0;
+
+          if (!state.isBleVoiceActive) {
+            // 当前处于空闲 -> 首次按下：开启录音
+            state.isBleVoiceActive = true;
+            state.bleVoiceStartTime = now;
+            state.micStartedByThisTouch = true;
+            if (currentMode == MODE_WIRELESS_MIC) {
+              startVoiceRecording();
+            }
+            if (BleCombo.isConnected()) {
+              BleCombo.pressRightAlt();
+              delay(45);
+              BleCombo.releaseRightAlt();
+            }
+            Serial.println("CMD:right_alt");
+          } else {
+            // 当前已经在录音中！
+            // 如果距离本次录音开始已超过 250ms，说明用户这是「点按第二下」想要结束并发送！
+            if (now - state.bleVoiceStartTime >= 250) {
+              state.isBleVoiceActive = false;
+              state.micStartedByThisTouch = false;
+              if (currentMode == MODE_WIRELESS_MIC) {
+                stopVoiceRecording();
+              }
+              if (BleCombo.isConnected()) {
+                BleCombo.pressRightAlt();
+                delay(45);
+                BleCombo.releaseRightAlt();
+              }
+              Serial.println("CMD:right_alt");
+              // 核心恢复：延时 1.8s 倒计时，留足输入法整理文字完全落盘/打入聊天框的时间！
+              state.pendingReturnTime = now + 1800;
+              showToast("整理中 • 倒计时发送", 1200);
+            } else {
+              state.micStartedByThisTouch = false;
+            }
           }
-          Serial.println("CMD:right_alt");
-        } else {
-          state.isBleVoiceActive = false;
-          if (BleCombo.isConnected()) {
-            BleCombo.pressRightAlt();
-            BleCombo.releaseRightAlt();
-          }
-          Serial.println("CMD:right_alt");
-          state.pendingReturnTime = now + 2000;
         }
         renderScreen();
         return;
       }
     }
   } else {
+    // 麦克风录音触控释放处理 (长按松手即发 vs 点按保持 vs 左下滑动取消)
+    if (state.micIsHolding) {
+      uint32_t pressDuration = (state.micTouchDownTime > 0) ? (now - state.micTouchDownTime) : 0;
+
+      // ── 特性：长按对讲滑向左下角，松手彻底取消发送！ ──
+      if (state.micSlideToCancel) {
+        if (currentMode == MODE_CORES3_MIC) {
+          if (state.isRecordingVoice) cancelVoiceRecording();
+        } else if (currentMode == MODE_BLE_REMOTE || currentMode == MODE_WIRELESS_MIC) {
+          if (currentMode == MODE_WIRELESS_MIC) cancelVoiceRecording();
+          bool wasActive = state.isBleVoiceActive;
+          state.isBleVoiceActive = false;
+          state.pendingReturnTime = 0; // 彻底取消回车！
+          if (BleCombo.isConnected()) {
+            if (wasActive) {
+              BleCombo.pressRightAlt();
+              delay(30);
+              BleCombo.releaseRightAlt();
+            }
+          }
+          if (wasActive) Serial.println("CMD:right_alt");
+
+          // 延时 1.8 秒全选清空输入框
+          state.pendingCancelClearStage = 1;
+          state.pendingCancelClearTime = now + 1800;
+        }
+        showToast("已取消 • 清理中", 1800);
+        state.micSlideToCancel = false;
+        state.micIsHolding = false;
+        state.micTouchDownTime = 0;
+        state.micWasLongPress = false;
+        state.micStartedByThisTouch = false;
+        renderScreen();
+        return;
+      }
+
+      if (pressDuration >= 500 || state.micWasLongPress) {
+        // ── 模式 1：长按操作，按住超过 500ms，松手即结束录音并进入 1.8s 整理发送！ ──
+        if (currentMode == MODE_CORES3_MIC) {
+          if (state.isRecordingVoice) {
+            stopVoiceRecording(); // 结束拾音并立即推送到大模型识别！
+            showToast("已发送", 800);
+          }
+        } else if (currentMode == MODE_BLE_REMOTE || currentMode == MODE_WIRELESS_MIC) {
+          if (state.isBleVoiceActive) {
+            state.isBleVoiceActive = false;
+            if (currentMode == MODE_WIRELESS_MIC) {
+              stopVoiceRecording();
+            }
+            if (BleCombo.isConnected()) {
+              BleCombo.pressRightAlt();
+              delay(45);
+              BleCombo.releaseRightAlt();
+            }
+            Serial.println("CMD:right_alt");
+            // 核心恢复：长按松手后，延时 1.8s 自动敲回车，输入法整理文字完全落盘上屏后成功发送！
+            state.pendingReturnTime = now + 1800;
+            showToast("整理中 • 倒计时发送", 1200);
+          }
+        }
+      } else {
+        // ── 模式 2：点按抬手操作 (按下时间 < 500ms) ──
+        if (state.micStartedByThisTouch) {
+          // 本次点按开启了录音 -> 保持录音状态，等待用户说完整句话
+          showToast("录音中 • 再点发送", 800);
+        }
+        // 若不是本次开启的（即第二下点按结束），已经在 touch-down 时立即触发了关闭并预约了 1.8s 发送
+      }
+      state.micIsHolding = false;
+      state.micTouchDownTime = 0;
+      state.micWasLongPress = false;
+      state.micStartedByThisTouch = false;
+      renderScreen();
+    }
+
     // 手指离开屏幕，结算触控板手势 (单击左键 / 双击打开 / 双指右键)
     if (currentMode == MODE_TOUCH_MOUSE) {
       if (state.mouseInScrollStrip) {
@@ -1908,7 +2215,7 @@ void loop() {
         int ddx = (state.mouseTouchStartX > 0) ? abs(state.mouseLastX - state.mouseTouchStartX) : 999;
         int ddy = (state.mouseTouchStartY > 0) ? abs(state.mouseLastY - state.mouseTouchStartY) : 999;
 
-        if (touchDuration < 280 && ddx < 16 && ddy < 16 && state.mouseTouchStartY > 46 && state.mouseTouchStartX < 246) {
+        if (touchDuration < 280 && ddx < 16 && ddy < 16 && state.mouseTouchStartY > 54 && state.mouseTouchStartX < 244) {
           if (state.mouseMaxFingers >= 2) {
             // ── 双指轻击：鼠标右键单击 (唤出快捷菜单) ──
             if (BleCombo.isConnected()) BleCombo.mouseClick(MOUSE_RIGHT);
@@ -1956,43 +2263,58 @@ void loop() {
     tab2LongTriggered = false;
   }
 
+  // 蓝牙连接状态变化检测 (一旦连上自动关闭任何弹窗，丝滑进入主控)
+  static bool lastBleConnected = false;
+  bool curBleConnected = BleCombo.isConnected();
+  if (curBleConnected && !lastBleConnected) {
+    state.showConnectPrompt = false;
+    state.isSelectingDevice = false;
+    showToast("蓝牙已连接", 1000);
+    renderScreen();
+  }
+  lastBleConnected = curBleConnected;
+
   // 1.5 非阻塞延时自动提交 (时间一到敲击回车，零卡顿，100% 成功发送)
   if (state.pendingReturnTime > 0 && now >= state.pendingReturnTime) {
     state.pendingReturnTime = 0;
     if (BleCombo.isConnected()) {
       BleCombo.pressKey(0, BLE_KEY_RETURN);
+      delay(25);
       BleCombo.releaseAllKeys();
     }
     Serial.println("CMD:enter");
     state.cmdEnterSentTime = now;
+    showToast("已发送", 800);
     renderScreen();
   }
 
-  // 1.6 延时两段式全选清空输入框 (等待输入法语音彻底落盘上屏后连扫两遍，绝不留任何残字)
+  // 1.55 延时 1.8 秒：等微信输入法文字完全落盘，执行撤销与清空 (纯键盘操作，绝不挪动或点击鼠标，光标 100% 留在输入框内)
   if (state.pendingCancelClearTime > 0 && now >= state.pendingCancelClearTime) {
+    state.pendingCancelClearTime = 0;
+    state.pendingCancelClearStage = 0;
     if (BleCombo.isConnected()) {
       uint8_t mod = isMacDevice(currentDevice) ? KEY_BLE_GUI : KEY_BLE_CTRL;
-      BleCombo.pressKey(mod, 0x04); // Ctrl+A / Cmd+A 全选
+      // 步骤 1：优先发送撤销 Ctrl+Z (Mac: Cmd+Z)，瞬间撤销微信输入法刚打上的文字
+      BleCombo.pressKey(mod, 0x1D); // 'z' = 0x1D
+      delay(25);
       BleCombo.releaseAllKeys();
-      delay(35);
-      BleCombo.pressKey(0, HID_KEY_BACKSPACE); // Backspace 清空
-      BleCombo.releaseAllKeys();
-    }
-    Serial.println("CMD:clear_input");
+      delay(30);
 
-    if (state.pendingCancelClearStage == 1) {
-      // 第一波已扫除，进入第二阶段：再等 450ms 进行二次终极扫尾
-      state.pendingCancelClearStage = 2;
-      state.pendingCancelClearTime = now + 450;
-    } else {
-      state.pendingCancelClearStage = 0;
-      state.pendingCancelClearTime = 0;
-      setEmotion(EMOTION_IDLE, "已完全清空", 1000);
-      renderScreen();
+      // 步骤 2：全选输入框内文字 Ctrl+A (Mac: Cmd+A) 并删除 (此时焦点一直在输入框内，绝不会跳出全屏)
+      BleCombo.pressKey(mod, 0x04); // 'a' = 0x04
+      delay(25);
+      BleCombo.releaseAllKeys();
+      delay(30);
+      BleCombo.pressKey(0, HID_KEY_BACKSPACE);
+      delay(25);
+      BleCombo.releaseAllKeys();
     }
+    Serial.println("CMD:cancel_clean_clear");
+    showToast("已清空", 1000);
+    renderScreen();
   }
 
-  // 1.8 纯 BLE 蓝牙模式发送回执超时兜底 (若未连 USB 且仅用蓝牙)
+  // 1.6 纯 BLE 蓝牙模式发送回执超时兜底 (若未连 USB 且仅用蓝牙)
   if (state.cmdEnterSentTime > 0 && now - state.cmdEnterSentTime >= 600) {
     state.cmdEnterSentTime = 0;
     if (BleCombo.isConnected() && state.sentNoticeState == 0) {

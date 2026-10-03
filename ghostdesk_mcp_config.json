@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "ghostdesk": {
+      "command": "C:\\Users\\dasea\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+      "args": [
+        "d:\\GhostDesk\\scripts\\ghostdesk_mcp_server.py"
+      ],
+      "env": {
+        "PYTHONIOENCODING": "utf-8"
+      }
+    }
+  }
+}

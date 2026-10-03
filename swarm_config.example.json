@@ -1,0 +1,19 @@
+{
+  "broker": "broker.emqx.io",
+  "port": 1883,
+  "cluster_id": "ghostdesk_marshall_swarm",
+  "cluster_token": "set_your_secret_cluster_password_here",
+  "node_id": "office_win",
+  "node_alias": "办公室主力 Windows 电脑",
+  "hardware": {
+    "use_pico_hid": false,
+    "pico_port": "AUTO"
+  },
+  "supported_apps": {
+    "claude_code": "claude",
+    "cursor": "cursor",
+    "vscode": "code",
+    "chrome": "chrome",
+    "wechat": "wechat"
+  }
+}

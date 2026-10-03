@@ -17,6 +17,7 @@ import struct
 import sys
 import time
 import wave
+import json
 
 if sys.stdout and hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -329,6 +330,23 @@ def handle_audio_async(raw_buffer: bytes, ser):
                 ser.write(f"buddy\tdone\t{short_msg}\n".encode("utf-8"))
             except Exception:
                 pass
+
+            # 跨公网多电脑集群云端广播联动 (异步非阻塞)
+            try:
+                from scripts.swarm_dispatcher import TOPIC_VOICE_IN, BROKER, PORT, CLUSTER_ID
+                import paho.mqtt.client as _mqtt
+                def _push():
+                    try:
+                        c = _mqtt.Client(_mqtt.CallbackAPIVersion.VERSION2, client_id=f"voice_pusher_{int(time.time()*1000)}")
+                        c.connect(BROKER, PORT, 10)
+                        c.publish(f"ghostdesk/{CLUSTER_ID}/voice_inbox", json.dumps({"text": prompt_text, "time": time.time()}))
+                        c.disconnect()
+                    except Exception:
+                        pass
+                threading.Thread(target=_push, daemon=True).start()
+            except Exception:
+                pass
+
             inject_prompt_to_active_window(prompt_text, auto_enter=True)
             try:
                 ser.write(b"NOTICE:SENT\n")

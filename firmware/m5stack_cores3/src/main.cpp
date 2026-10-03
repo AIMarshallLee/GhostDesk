@@ -1025,6 +1025,11 @@ static const int8_t adpcmIndexTable[16] = {
 static int16_t adpcmPredicted = 0;
 static int8_t  adpcmIndex = 0;
 
+static inline void resetAdpcmState() {
+  adpcmPredicted = 0;
+  adpcmIndex = 0;
+}
+
 static inline uint8_t encodeAdpcmSample(int16_t sample) {
   int16_t step = adpcmStepTable[adpcmIndex];
   int32_t diff = sample - adpcmPredicted;
@@ -1049,6 +1054,9 @@ static inline uint8_t encodeAdpcmSample(int16_t sample) {
   if (adpcmPredicted > 32767) adpcmPredicted = 32767;
   else if (adpcmPredicted < -32768) adpcmPredicted = -32768;
 
+  // 泄漏衰减 (Leaky integration)，防止丢包与偏置累加导致数值积分锁死饱和
+  adpcmPredicted = (int32_t)(adpcmPredicted * 255) / 256;
+
   adpcmIndex += adpcmIndexTable[code & 0x0F];
   if (adpcmIndex < 0) adpcmIndex = 0;
   else if (adpcmIndex > 88) adpcmIndex = 88;
@@ -1072,18 +1080,22 @@ void audioStreamTask(void* parameter) {
   hexChunk[1] = ':';
 
   while (true) {
-    if (isAudioStreaming && M5.Mic.isEnabled()) {
+    // 在「无线话筒模式 (MODE_WIRELESS_MIC)」下只要蓝牙已连，保持常态持续拾音推流；云端/遥控模式则按需触发
+    bool streamActive = (currentMode == MODE_WIRELESS_MIC && BleCombo.isConnected()) || isAudioStreaming;
+
+    if (streamActive && M5.Mic.isEnabled()) {
       if (M5.Mic.record(pcmBuffer, SAMPLES_PER_CHUNK, 16000, false)) {
-        while (isAudioStreaming && M5.Mic.isRecording()) {
+        while (streamActive && M5.Mic.isRecording()) {
           vTaskDelay(1 / portTICK_PERIOD_MS);
+          streamActive = (currentMode == MODE_WIRELESS_MIC && BleCombo.isConnected()) || isAudioStreaming;
         }
-        if (isAudioStreaming) {
+        if (streamActive) {
           int maxAmp = 0;
           for (size_t i = 0; i < SAMPLES_PER_CHUNK; ++i) {
             int a = abs(pcmBuffer[i]);
             if (a > maxAmp) maxAmp = a;
           }
-          state.liveVoiceLevel = maxAmp / 500;
+          state.liveVoiceLevel = maxAmp / 350;
 
           // 1. 无线 BLE 音频串流 (极速 ADPCM 压缩，64字节直接通过 BLE Notify 广播给电脑网桥)
           if (BleCombo.isConnected()) {
@@ -1120,6 +1132,7 @@ void audioStreamTask(void* parameter) {
 
 void startVoiceRecording() {
   if (state.isRecordingVoice) return;
+  resetAdpcmState();
   state.isRecordingVoice = true;
   state.recordingStartTime = millis();
   state.emotion = EMOTION_RECORDING;
@@ -1133,6 +1146,7 @@ void stopVoiceRecording() {
   if (!state.isRecordingVoice) return;
   state.isRecordingVoice = false;
   isAudioStreaming = false;
+  resetAdpcmState();
 
   setEmotion(EMOTION_THINKING, "豆包大模型识别中...", 6000);
   Serial.println("VOICE_END");
@@ -1142,6 +1156,7 @@ void cancelVoiceRecording() {
   if (!state.isRecordingVoice) return;
   state.isRecordingVoice = false;
   isAudioStreaming = false;
+  resetAdpcmState();
 
   setEmotion(EMOTION_IDLE, "已取消", 1500);
   Serial.println("VOICE_CANCEL");
@@ -1273,14 +1288,11 @@ void setup() {
   canvas.setFont(&fonts::efontCN_14);
   canvas.setTextWrap(true);
 
-  // 释放 Speaker 资源，将 I2S 与 DMA 总线完全交由麦克风独占
-  M5.Speaker.end();
-
-  // 配置 ES7210 声学前端放大：针对 1.5~2 米远场拾音强力增益
+  // 配置 ES7210 板载双麦克风声学前端：芯片内部硬件已具备 +27dB 前置增益，此处设为适度 1.5x (magnification=3)，坚决杜绝整数削波饱和
   auto micCfg = M5.Mic.config();
   micCfg.sample_rate = 16000;
-  micCfg.magnification = 24;      // 远距离灵敏度放大 (24x)
-  micCfg.noise_filter_level = 16; // 自适应环境低噪平滑
+  micCfg.magnification = 3;       // 1.5x 适度增益，动态宽容度极高
+  micCfg.noise_filter_level = 0;  // 禁用高阶滤波以防积分器直流漂移
   M5.Mic.config(micCfg);
   M5.Mic.begin();
 

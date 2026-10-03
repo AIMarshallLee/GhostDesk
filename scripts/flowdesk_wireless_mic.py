@@ -60,6 +60,8 @@ class AdpcmDecoder:
             self.predicted += diff
 
         self.predicted = max(-32768, min(32767, self.predicted))
+        # 泄漏衰减 (Leaky integration)，每帧平滑向 0 衰减，彻底防止丢包导致数值积分锁死饱和
+        self.predicted = (self.predicted * 255) // 256
         self.step_index += INDEX_TABLE[nibble]
         self.step_index = max(0, min(88, self.step_index))
         return self.predicted
@@ -121,13 +123,21 @@ async def main():
 
     packet_count = 0
     last_ui_time = 0
+    last_packet_time = 0
 
     def on_voice_data(sender, data: bytearray):
-        nonlocal packet_count, last_ui_time
+        nonlocal packet_count, last_ui_time, last_packet_time
+        now = time.time()
+        if last_packet_time > 0 and (now - last_packet_time > 0.4):
+            decoder.reset()
+        last_packet_time = now
+
         pcm = decoder.decode_chunk(bytes(data))
+        raw_peak = int(np.max(np.abs(pcm)))
+        rms = int(np.sqrt(np.mean(pcm.astype(np.float32)**2)))
         
-        # 1. 软件数字动态增益 (2.5x 提升远场与微弱语音清晰度，带限幅防爆音)
-        pcm_boosted = np.clip(pcm.astype(np.float32) * 2.5, -32768, 32767).astype(np.int16)
+        # 1. 软件适度增益 (1.5x 保持自然人声饱满度，杜绝爆音削波)
+        pcm_boosted = np.clip(pcm.astype(np.float32) * 1.5, -32768, 32767).astype(np.int16)
 
         # 2. 采样率平滑适配 (CoreS3 采集为 16kHz，若声卡要求 48kHz/44.1kHz 则智能插值)
         if target_sr == 48000:
@@ -152,14 +162,12 @@ async def main():
         out_stream.write(pcm_out)
         packet_count += 1
 
-        # 实时声波跳动电平打印 (终端可视化电平表，消灭一切猜疑)
-        now = time.time()
+        # 实时声波跳动电平打印 (终端可视化律动表：显示真实人声 RMS 与未失真峰值)
         if now - last_ui_time >= 0.12:
             last_ui_time = now
-            peak = int(np.max(np.abs(pcm_boosted)))
-            bar_len = min(18, peak // 1200)
+            bar_len = min(18, rms // 220)
             bars = "█" * bar_len + "░" * (18 - bar_len)
-            sys.stdout.write(f"\r[🎤 实时推流] 电平: [{bars}] 峰值: {peak:5d} | 已送达帧数: {packet_count}   ")
+            sys.stdout.write(f"\r[🎤 实时拾音推流] 律动: [{bars}] RMS: {rms:4d} | 原始峰值: {raw_peak:5d} | 已送达帧: {packet_count}   ")
             sys.stdout.flush()
 
     print(">>> 正在搜索 FlowDesk 蓝牙无线话筒设备...")

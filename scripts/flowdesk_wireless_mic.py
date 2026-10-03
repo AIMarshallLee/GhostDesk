@@ -78,36 +78,63 @@ def find_cable_input_device():
     for idx, dev in enumerate(devices):
         name = dev['name'].lower()
         if dev['max_output_channels'] > 0 and ('cable input' in name or 'vb-cable' in name or 'blackhole' in name):
-            return idx, dev['name']
+            return idx, dev['name'], dev['max_output_channels']
     for idx, dev in enumerate(devices):
         name = dev['name'].lower()
         if dev['max_output_channels'] > 0 and 'cable' in name:
-            return idx, dev['name']
-    return None, None
+            return idx, dev['name'], dev['max_output_channels']
+    return None, None, 1
 
 VOICE_CHAR_UUID = "12345678-1234-5678-1234-56789abcdef1"
 
 async def main():
     print("=" * 60)
-    print(">>> FlowDesk 独立无线话筒 Windows 音频网桥启动")
+    print(">>> FlowDesk 独立无线话筒 音频网桥启动")
     print("=" * 60)
 
-    cable_id, cable_name = find_cable_input_device()
+    cable_id, cable_name, dev_channels = find_cable_input_device()
+    target_channels = min(2, max(1, dev_channels))
+
     if cable_id is None:
-        print("[提示] 尚未检测到虚拟音频设备 'CABLE Input'！")
-        print(">>> 请先双击安装: tools\\vbcable\\VBCABLE_Setup_x64.exe (以管理员身份运行并点击 Install)")
-        print(">>> 正在使用系统默认音频输出做预览调试...\n")
+        print("[提示] 尚未检测到虚拟音频设备 'VB-Cable' 或 'CABLE Input'！")
+        print(">>> 正在使用系统默认音频通道做预览监听...\n")
         out_stream = sd.OutputStream(samplerate=16000, channels=1, dtype='int16')
+        target_channels = 1
     else:
-        print(f"[就绪] 成功绑定虚拟音频输入通道: [{cable_id}] {cable_name}")
-        out_stream = sd.OutputStream(device=cable_id, samplerate=16000, channels=1, dtype='int16')
+        print(f"[就绪] 成功绑定虚拟音频输入通道: [{cable_id}] {cable_name} ({target_channels}声道)")
+        out_stream = sd.OutputStream(device=cable_id, samplerate=16000, channels=target_channels, dtype='int16')
 
     out_stream.start()
     decoder = AdpcmDecoder()
 
+    packet_count = 0
+    last_ui_time = 0
+
     def on_voice_data(sender, data: bytearray):
+        nonlocal packet_count, last_ui_time
         pcm = decoder.decode_chunk(bytes(data))
-        out_stream.write(pcm)
+        
+        # 软件数字动态增益 (2.5x 提升远场与微弱语音清晰度，带限幅防爆音)
+        pcm_boosted = np.clip(pcm.astype(np.float32) * 2.5, -32768, 32767).astype(np.int16)
+
+        # 适配 macOS CoreAudio 严格要求的双声道 (Stereo 2-channel)
+        if target_channels == 2:
+            pcm_out = np.column_stack((pcm_boosted, pcm_boosted))
+        else:
+            pcm_out = pcm_boosted
+
+        out_stream.write(pcm_out)
+        packet_count += 1
+
+        # 实时声波跳动电平打印 (终端可视化电平表，消灭一切猜疑)
+        now = time.time()
+        if now - last_ui_time >= 0.12:
+            last_ui_time = now
+            peak = int(np.max(np.abs(pcm_boosted)))
+            bar_len = min(18, peak // 1200)
+            bars = "█" * bar_len + "░" * (18 - bar_len)
+            sys.stdout.write(f"\r[🎤 实时推流] 电平: [{bars}] 峰值: {peak:5d} | 已送达帧数: {packet_count}   ")
+            sys.stdout.flush()
 
     print(">>> 正在搜索 FlowDesk 蓝牙无线话筒设备...")
     while True:
@@ -141,10 +168,10 @@ async def main():
                 continue
 
             dev_label = device.name or "FlowDesk Mac"
-            print(f">>> 找到设备: {dev_label} ({device.address})，正在建立无线音频流通道...")
+            print(f"\n>>> 找到设备: {dev_label} ({device.address})，正在建立无线音频流通道...")
             async with BleakClient(device) as client:
                 print(f"[成功连接] 已接入 {dev_label} 无线双麦通道！")
-                print(">>> 现在可以对着 CoreS3 机身说话，微信输入法将实时捕获并出字！")
+                print(">>> 现在可以对着 CoreS3 机身说话，微信输入法/听写将实时捕获并出字！")
                 decoder.reset()
 
                 # 订阅语音特征通知
@@ -157,7 +184,7 @@ async def main():
                     await asyncio.sleep(1)
 
         except Exception as e:
-            print(f"[重连中] 蓝牙连接波动 ({e})，2 秒后自动重试...")
+            print(f"\n[重连中] 蓝牙连接波动 ({e})，2 秒后自动重试...")
             await asyncio.sleep(2)
 
 if __name__ == "__main__":

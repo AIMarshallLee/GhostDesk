@@ -164,10 +164,79 @@ class FeishuEngine:
             print(f"⚠️ [Feishu] 发送卡片失败: {e}")
             return False
 
+    def send_webhook_card(self, webhook_url: str, title: str, content_lines: list) -> bool:
+        if not webhook_url:
+            return False
+        elements = []
+        for line in content_lines:
+            elements.append({
+                "tag": "div",
+                "text": {"tag": "lark_md", "content": line}
+            })
+        card = {
+            "config": {"wide_screen_mode": True},
+            "header": {
+                "title": {"tag": "plain_text", "content": title},
+                "template": "blue"
+            },
+            "elements": elements
+        }
+        try:
+            res = requests.post(webhook_url, json={"msg_type": "interactive", "card": card}, timeout=5)
+            return res.status_code == 200
+        except Exception as e:
+            print(f"⚠️ [Feishu Webhook] 推送失败: {e}")
+            return False
+
 feishu_engine = FeishuEngine(
     app_id=FEISHU_CFG.get("app_id", ""),
     app_secret=FEISHU_CFG.get("app_secret", "")
 )
+
+class FeishuWsHandler:
+    def _do_without_validation(self, pl: bytes):
+        try:
+            data = json.loads(pl.decode("utf-8"))
+            header = data.get("header", {})
+            event_type = header.get("event_type", "")
+            event = data.get("event", {})
+            
+            if event_type == "im.message.receive_v1":
+                msg = event.get("message", {})
+                chat_id = msg.get("chat_id", "")
+                content_str = msg.get("content", "{}")
+                content = json.loads(content_str)
+                text = content.get("text", "").strip()
+                
+                # 自动记忆当前活跃对话窗口 ID，以便主动回传报告
+                if chat_id and FEISHU_CFG.get("default_chat_id") != chat_id:
+                    FEISHU_CFG["default_chat_id"] = chat_id
+                    try:
+                        with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+                            json.dump(CONFIG, f, indent=2, ensure_ascii=False)
+                        print(f"📌 [Feishu] 自动锁定并记住对话窗口: {chat_id}", flush=True)
+                    except Exception:
+                        pass
+
+                print(f"\n📱 [收到手机飞书指令] 「{text}」", flush=True)
+                feishu_engine.send_text(chat_id, f"🫡 收到指令: 「{text}」，正在安排蜂群电脑执行...")
+                parse_and_route_command(text, source=f"Feishu_App")
+                print("> ", end="", flush=True)
+        except Exception as e:
+            print(f"⚠️ [Feishu WS] 处理事件异常: {e}", flush=True)
+
+def start_feishu_ws():
+    app_id = FEISHU_CFG.get("app_id", "")
+    app_secret = FEISHU_CFG.get("app_secret", "")
+    if not app_id or not app_secret or not FEISHU_CFG.get("enabled", False):
+        return
+    try:
+        from lark_oapi.ws.client import Client
+        cli = Client(app_id, app_secret, event_handler=FeishuWsHandler())
+        print(f"🚀 [Feishu WS] 手机飞书 WebSocket 长连接监听已启动！", flush=True)
+        cli.start()
+    except Exception as e:
+        print(f"⚠️ [Feishu WS] 启动长连接异常: {e}", flush=True)
 
 # ==========================================
 # 意图路由与分布式任务派发
@@ -388,7 +457,19 @@ def on_mqtt_message(client, userdata, msg):
                 print(f"   输出明细: {output[:300]}...", flush=True)
             print("> ", end="", flush=True)
 
-            # 自动通知手机飞书
+            # 自动通知手机飞书 (支持群 Webhook 或 自建应用 Bot)
+            webhook_url = FEISHU_CFG.get("webhook_url", "")
+            if webhook_url:
+                feishu_engine.send_webhook_card(
+                    webhook_url=webhook_url,
+                    title=f"🤖 AI 员工执行报告 · {alias}",
+                    content_lines=[
+                        f"**任务编号**：`{task_id}`",
+                        f"**执行动作**：`{action}`",
+                        f"**结果反馈**：{msg_text}",
+                        f"**详细输出**：\n```\n{output[:500] if output else '无控制台输出'}\n```"
+                    ]
+                )
             chat_id = FEISHU_CFG.get("default_chat_id", "")
             if FEISHU_CFG.get("enabled", False) and chat_id:
                 feishu_engine.send_interactive_card(
@@ -416,6 +497,11 @@ def main():
     # 启动 CoreS3 WiFi HTTP 监听服务
     http_thread = threading.Thread(target=run_http_server, daemon=True)
     http_thread.start()
+
+    # 启动 飞书 WebSocket 长连接监听 (无需公网域名，手机实时收发)
+    if FEISHU_CFG.get("enabled", False) and FEISHU_CFG.get("app_id"):
+        ws_thread = threading.Thread(target=start_feishu_ws, daemon=True)
+        ws_thread.start()
 
     # 启动 MQTT 总线通信
     mqtt_client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=f"master_{int(time.time())}")

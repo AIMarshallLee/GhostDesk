@@ -225,6 +225,8 @@ public:
     pSecurity->setAuthenticationMode(ESP_LE_AUTH_BOND);
     pSecurity->setCapability(ESP_IO_CAP_NONE);
     pSecurity->setInitEncryptionKey(ESP_BLE_ENC_KEY_MASK | ESP_BLE_ID_KEY_MASK);
+    pSecurity->setRespEncryptionKey(ESP_BLE_ENC_KEY_MASK | ESP_BLE_ID_KEY_MASK);
+    pSecurity->setKeySize(16);
 
     BLEAdvertising *pAdvertising = pServer->getAdvertising();
     pAdvertising->setAppearance(0x03C0); // HID Composite (Keyboard + Mouse)

@@ -174,15 +174,13 @@ async def main():
     while True:
         try:
             def is_flowdesk(d, ad):
-                name = (d.name or (ad.local_name if ad else "") or "")
-                if "flowdesk" in name.lower():
+                name = (d.name or (ad.local_name if ad else "") or "").lower()
+                # 严格通道物理隔离：若为 Windows / Marshall / PC 通道，绝对禁止连接，彻底杜绝 Mac 跨设备抢占与弹窗！
+                if "marshall" in name or "pc" in name or "win" in name:
+                    return False
+                # 仅连接专属 Mac 频道设备
+                if "flowdesk mac" in name:
                     return True
-                if d.address and d.address.upper().startswith("30:ED:A0:D4:B3"):
-                    return True
-                if ad and ad.service_uuids:
-                    for u in ad.service_uuids:
-                        if "1812" in u.lower() or "12345678" in u.lower():
-                            return True
                 return False
 
             # 在 macOS 上传入 HID Service UUID 即可让 CoreBluetooth 瞬间检索出“已连接”的蓝牙设备！

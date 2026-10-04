@@ -175,13 +175,16 @@ async def main():
         try:
             def is_flowdesk(d, ad):
                 name = (d.name or (ad.local_name if ad else "") or "").lower()
-                # 严格通道物理隔离：若为 Windows / Marshall / PC 通道，绝对禁止连接，彻底杜绝 Mac 跨设备抢占与弹窗！
-                if "marshall" in name or "pc" in name or "win" in name:
-                    return False
-                # 仅连接专属 Mac 频道设备
-                if "flowdesk mac" in name:
-                    return True
-                return False
+                if sys.platform == "darwin":
+                    # Mac 专属：仅连接 FlowDesk Mac，彻底杜绝抢占 Windows 通道！
+                    if "marshall" in name or "pc" in name or "win" in name:
+                        return False
+                    return "flowdesk mac" in name
+                else:
+                    # Windows 专属：仅连接 FlowDesk Marshall，彻底杜绝抢占 Mac 通道！
+                    if "mac" in name:
+                        return False
+                    return "marshall" in name or ("flowdesk" in name and "mac" not in name)
 
             # 在 macOS 上传入 HID Service UUID 即可让 CoreBluetooth 瞬间检索出“已连接”的蓝牙设备！
             device = await BleakScanner.find_device_by_filter(

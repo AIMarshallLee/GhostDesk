@@ -220,13 +220,8 @@ void switchDeviceChannel(uint8_t targetDevice) {
   Preferences p;
   p.begin("flowdesk", false);
   p.putUChar("device", targetDevice);
-  // 1. 切换到 Mac 时，默认是无线模式 (MODE_WIRELESS_MIC)
-  // 2. 切换到 Windows 时，暂时默认是遥控模式 (MODE_BLE_REMOTE)
-  if (isMacDevice(targetDevice)) {
-    p.putUChar("voice_mode", (uint8_t)MODE_WIRELESS_MIC);
-  } else {
-    p.putUChar("voice_mode", (uint8_t)MODE_BLE_REMOTE);
-  }
+  // 两端统一：无论切换到 Mac 还是 Windows，均默认激活无线话筒模式 (MODE_WIRELESS_MIC)，即连即讲即打字
+  p.putUChar("voice_mode", (uint8_t)MODE_WIRELESS_MIC);
   p.end();
 
   // 关键：切换前优雅断开当前蓝牙连接，发送标准断开包，避免宿主电脑产生连接挂起或残留
@@ -1322,7 +1317,7 @@ void setup() {
   p.begin("flowdesk", false);
   currentDevice = p.getUChar("device", 0);
   if (currentDevice >= TOTAL_DEVICES) currentDevice = 0;
-  DeviceMode defMode = isMacDevice(currentDevice) ? MODE_WIRELESS_MIC : MODE_BLE_REMOTE;
+  DeviceMode defMode = MODE_WIRELESS_MIC; // 统一开机默认无线话筒模式
   activeVoiceMode = (DeviceMode)p.getUChar("voice_mode", (uint8_t)defMode);
   p.end();
 

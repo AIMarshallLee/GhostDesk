@@ -158,16 +158,16 @@ public:
   bool onConfirmPIN(uint32_t pin) override { return true; }
 };
 
+class BleComboClass;
+
 class BleComboServerCallbacks : public BLEServerCallbacks {
 public:
   bool* connected;
   uint16_t* connId;
-  BleComboServerCallbacks(bool* c, uint16_t* id) : connected(c), connId(id) {}
-  void onConnect(BLEServer* pServer, esp_ble_gatts_cb_param_t *param) override {
-    *connected = true;
-    if (connId && param) *connId = param->connect.conn_id;
-    Serial.printf("[BLE] Host Connected! conn_id=%d\n", param ? param->connect.conn_id : 0);
-  }
+  BleComboClass* combo;
+  BleComboServerCallbacks(bool* c, uint16_t* id, BleComboClass* cb = nullptr)
+    : connected(c), connId(id), combo(cb) {}
+  void onConnect(BLEServer* pServer, esp_ble_gatts_cb_param_t *param) override;
   void onDisconnect(BLEServer* pServer) override {
     *connected = false;
     Serial.println("[BLE] Host Disconnected. Fast Advertising Restored...");
@@ -190,10 +190,22 @@ private:
   uint8_t _mouseButtons = 0;
 
 public:
+  void enableAllNotifications() {
+    BLECharacteristic* chars[] = {inputKeyboard, inputMouse, inputMedia, voiceDataChar};
+    for (int i = 0; i < 4; i++) {
+      if (chars[i]) {
+        BLE2902* p2902 = (BLE2902*)chars[i]->getDescriptorByUUID((uint16_t)0x2902);
+        if (p2902) {
+          p2902->setNotifications(true);
+        }
+      }
+    }
+  }
+
   void begin(const std::string& deviceName = "FlowDesk Remote") {
     BLEDevice::init(deviceName);
     pServer = BLEDevice::createServer();
-    pServer->setCallbacks(new BleComboServerCallbacks(&_connected, &_connId));
+    pServer->setCallbacks(new BleComboServerCallbacks(&_connected, &_connId, this));
 
     pHid = new BLEHIDDevice(pServer);
     inputKeyboard = pHid->inputReport(BLE_KEY_REPORT_ID);
@@ -275,6 +287,8 @@ public:
 
   void sendKeyReport() {
     if (!_connected || !inputKeyboard) return;
+    BLE2902* p2902 = (BLE2902*)inputKeyboard->getDescriptorByUUID((uint16_t)0x2902);
+    if (p2902 && !p2902->getNotifications()) p2902->setNotifications(true);
     inputKeyboard->setValue((uint8_t*)&_keyReport, sizeof(BleKeyReport));
     inputKeyboard->notify();
   }
@@ -351,6 +365,8 @@ public:
     if (!_connected || !inputMedia) return;
     uint8_t buf[2] = {(uint8_t)(code & 0xFF), (uint8_t)((code >> 8) & 0xFF)};
     inputMedia->setValue(buf, 2);
+    BLE2902* p2902 = (BLE2902*)inputMedia->getDescriptorByUUID((uint16_t)0x2902);
+    if (p2902 && !p2902->getNotifications()) p2902->setNotifications(true);
     inputMedia->notify();
     delay(20);
     uint8_t zero[2] = {0, 0};
@@ -360,9 +376,20 @@ public:
 
   void sendVoicePacket(const uint8_t* data, size_t length) {
     if (!_connected || !voiceDataChar) return;
+    BLE2902* p2902 = (BLE2902*)voiceDataChar->getDescriptorByUUID((uint16_t)0x2902);
+    if (p2902 && !p2902->getNotifications()) p2902->setNotifications(true);
     voiceDataChar->setValue((uint8_t*)data, length);
     voiceDataChar->notify();
   }
 };
+
+inline void BleComboServerCallbacks::onConnect(BLEServer* pServer, esp_ble_gatts_cb_param_t *param) {
+  *connected = true;
+  if (connId && param) *connId = param->connect.conn_id;
+  Serial.printf("[BLE] Host Connected! conn_id=%d\n", param ? param->connect.conn_id : 0);
+  if (combo) {
+    combo->enableAllNotifications();
+  }
+}
 
 extern BleComboClass BleCombo;

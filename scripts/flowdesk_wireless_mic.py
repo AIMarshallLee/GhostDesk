@@ -168,44 +168,66 @@ async def main():
         out_stream.write(pcm_out)
         packet_count += 1
 
-        # 实时声波跳动电平打印 (终端可视化律动表：显示真实人声 RMS 与未失真峰值)
+        # 实时声波跳动电平打印 (终端可视化律动表)
         if now - last_ui_time >= 0.12:
             last_ui_time = now
-            bar_len = min(18, rms // 220)
-            bars = "█" * bar_len + "░" * (18 - bar_len)
-            sys.stdout.write(f"\r[🎤 实时拾音推流] 律动: [{bars}] RMS: {rms:4d} | 原始峰值: {raw_peak:5d} | 已送达帧: {packet_count}   ")
-            sys.stdout.flush()
+            try:
+                bar_len = min(18, rms // 220)
+                bars = "=" * bar_len + "-" * (18 - bar_len)
+                sys.stdout.write(f"\r[VOICE PUSH] Level: [{bars}] RMS: {rms:4d} | Peak: {raw_peak:5d} | Pkts: {packet_count}   ")
+                sys.stdout.flush()
+            except Exception:
+                pass
 
     print(">>> 正在搜索 FlowDesk 蓝牙无线话筒设备...")
     while True:
         try:
-            def is_flowdesk(d, ad):
-                name = (d.name or (ad.local_name if ad else "") or "").lower()
-                if sys.platform == "darwin":
-                    # Mac 专属：仅连接 FlowDesk Mac，彻底杜绝抢占 Windows 通道！
-                    if "marshall" in name or "pc" in name or "win" in name:
-                        return False
-                    return "flowdesk mac" in name
-                else:
-                    # Windows 专属：仅连接 FlowDesk Marshall，彻底杜绝抢占 Mac 通道！
-                    if "mac" in name:
-                        return False
-                    return "marshall" in name or ("flowdesk" in name and "mac" not in name)
+            device = None
 
-            # 在 macOS 上传入 HID Service UUID 即可让 CoreBluetooth 瞬间检索出“已连接”的蓝牙设备！
-            device = await BleakScanner.find_device_by_filter(
-                is_flowdesk,
-                service_uuids=["00001812-0000-1000-8000-00805f9b34fb"],
-                timeout=3.5
-            )
+            if sys.platform == "win32":
+                # Windows 原生超高速直连：直接从系统已配对表中获取 FlowDesk Marshall，彻底绕过广告扫描！
+                try:
+                    import winrt.windows.devices.bluetooth as bt
+                    import winrt.windows.devices.enumeration as de
+                    from bleak.backends.device import BLEDevice
 
-            # 如果按服务没扫到，再全网无过滤兜底扫一次
-            if not device:
-                device = await BleakScanner.find_device_by_filter(is_flowdesk, timeout=2.0)
+                    sel = bt.BluetoothLEDevice.get_device_selector_from_pairing_state(True)
+                    devs = await de.DeviceInformation.find_all_async_aqs_filter(sel)
+                    for d in devs:
+                        if "marshall" in d.name.lower() or ("flowdesk" in d.name.lower() and "mac" not in d.name.lower()):
+                            ble_obj = await bt.BluetoothLEDevice.from_id_async(d.id)
+                            if ble_obj and ble_obj.connection_status == bt.BluetoothConnectionStatus.CONNECTED:
+                                addr = ':'.join(f'{(ble_obj.bluetooth_address >> (i*8)) & 0xff:02x}' for i in reversed(range(6)))
+                                device = BLEDevice(addr, d.name, None)
+                                break
+                except Exception:
+                    device = None
 
             if not device:
-                print("...等待 FlowDesk 蓝牙握手 (请确认 CoreS3 在 Mac 蓝牙中已配对连接)...")
-                await asyncio.sleep(2)
+                def is_flowdesk(d, ad):
+                    name = (d.name or (ad.local_name if ad else "") or "").lower()
+                    if sys.platform == "darwin":
+                        if "marshall" in name or "pc" in name or "win" in name:
+                            return False
+                        return "flowdesk mac" in name
+                    else:
+                        if "mac" in name:
+                            return False
+                        return "marshall" in name or ("flowdesk" in name and "mac" not in name)
+
+                # macOS 或未连接状态：通过服务 UUID 或全网广播探测
+                device = await BleakScanner.find_device_by_filter(
+                    is_flowdesk,
+                    service_uuids=["00001812-0000-1000-8000-00805f9b34fb"],
+                    timeout=2.0
+                )
+                if not device:
+                    device = await BleakScanner.find_device_by_filter(is_flowdesk, timeout=1.5)
+
+            if not device:
+                sys.stdout.write("\r...等待 FlowDesk 蓝牙就绪 (切回 Windows 时将在 1~2 秒内自动接入)...   ")
+                sys.stdout.flush()
+                await asyncio.sleep(1.5)
                 continue
 
             dev_label = device.name or "FlowDesk Mac"

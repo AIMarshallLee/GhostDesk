@@ -1421,14 +1421,14 @@ void loop() {
           return;
         }
 
-        // 判定 4 张大卡片点击 (2 行 x 2 列)
+        // 判定 4 张大卡片点击 (2 行 x 2 列，消除死区，最大化有效触摸面积)
         int selectedDev = -1;
-        if (ty >= 38 && ty <= 120) {
-          if (tx >= 10 && tx <= 154) selectedDev = DEVICE_WIN_1;
-          else if (tx >= 166 && tx <= 310) selectedDev = DEVICE_MAC_1;
-        } else if (ty >= 126 && ty <= 208) {
-          if (tx >= 10 && tx <= 154) selectedDev = DEVICE_PAIR_WIN_2;
-          else if (tx >= 166 && tx <= 310) selectedDev = DEVICE_PAIR_MAC_2;
+        if (ty >= 36 && ty <= 122) {
+          if (tx >= 8 && tx <= 159) selectedDev = DEVICE_WIN_1;
+          else if (tx >= 161 && tx <= 312) selectedDev = DEVICE_MAC_1;
+        } else if (ty >= 124 && ty <= 210) {
+          if (tx >= 8 && tx <= 159) selectedDev = DEVICE_PAIR_WIN_2;
+          else if (tx >= 161 && tx <= 312) selectedDev = DEVICE_PAIR_MAC_2;
         }
 
         if (selectedDev >= 0) {
@@ -1719,8 +1719,8 @@ void loop() {
             lastPageTabClick = now;
             renderScreen();
           } else {
-            // 当前已经在翻页模式：检测 450ms 内双击唤出 4 台设备选择菜单！
-            if (now - lastPageTabClick < 450 && lastPageTabClick > 0) {
+            // 当前已经在翻页模式：检测 600ms 内双击唤出 4 台设备选择菜单！
+            if (now - lastPageTabClick < 600 && lastPageTabClick > 0) {
               state.isSelectingDevice = true; // 双击唤出 4 台设备选择菜单！
               lastPageTabClick = 0;
               renderScreen();

@@ -11,7 +11,13 @@ import time
 import asyncio
 import numpy as np
 
-# 关键：Windows 11 上强制当前线程为 COM MTA 多线程套间，杜绝 WinRT 与 PortAudio/sounddevice 冲突
+# 关键：开启标准输出行缓冲，并强制 Windows 11 当前线程为 COM MTA 套间
+try:
+    sys.stdout.reconfigure(line_buffering=True)
+    sys.stderr.reconfigure(line_buffering=True)
+except Exception:
+    pass
+
 if sys.platform == "win32":
     import ctypes
     ctypes.windll.ole32.CoInitializeEx(None, 0x0)

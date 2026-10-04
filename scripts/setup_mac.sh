@@ -30,9 +30,21 @@ if [ -z "$PYTHON_BIN" ]; then
     exit 1
 fi
 
-# 2. 安装 Python 核心依赖
-echo "1/3 检查并安装核心运行依赖 (sounddevice, bleak, numpy)..."
-"$PYTHON_BIN" -m pip install --quiet --disable-pip-version-check -r "$REQ_FILE"
+# 2. 安装 Python 核心依赖 (自动隔离 venv，完美兼容 Homebrew Python 与 PEP 668)
+echo "1/3 准备 Python 独立运行环境与核心依赖 (sounddevice, bleak, numpy)..."
+VENV_DIR="$PROJECT_ROOT/.venv"
+if [ ! -d "$VENV_DIR" ]; then
+    "$PYTHON_BIN" -m venv "$VENV_DIR" 2>/dev/null || true
+fi
+
+if [ -f "$VENV_DIR/bin/python3" ]; then
+    RUN_PYTHON="$VENV_DIR/bin/python3"
+    "$RUN_PYTHON" -m pip install --quiet --disable-pip-version-check -r "$REQ_FILE"
+else
+    RUN_PYTHON="$PYTHON_BIN"
+    "$RUN_PYTHON" -m pip install --quiet --disable-pip-version-check --break-system-packages -r "$REQ_FILE" 2>/dev/null || \
+    "$RUN_PYTHON" -m pip install --quiet --disable-pip-version-check -r "$REQ_FILE"
+fi
 echo "[OK] Python 核心依赖库已就绪！"
 
 # 3. 注册 LaunchAgent (开机自启、崩溃自动重启、零黑框后台常驻)
@@ -48,7 +60,7 @@ cat <<EOF > "$PLIST_PATH"
     <string>com.flowdesk.mic</string>
     <key>ProgramArguments</key>
     <array>
-        <string>$PYTHON_BIN</string>
+        <string>$RUN_PYTHON</string>
         <string>$MIC_SCRIPT</string>
     </array>
     <key>RunAtLoad</key>

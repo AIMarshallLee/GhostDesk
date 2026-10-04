@@ -5,15 +5,13 @@
   "cluster_token": "set_your_secret_cluster_password_here",
   "node_id": "office_win",
   "node_alias": "办公室主力 Windows 电脑",
-  "hardware": {
-    "use_pico_hid": false,
-    "pico_port": "AUTO"
+  "feishu": {
+    "enabled": false,
+    "app_id": "cli_xxxxxxxxxxxxxxxx",
+    "app_secret": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "default_chat_id": ""
   },
-  "supported_apps": {
-    "claude_code": "claude",
-    "cursor": "cursor",
-    "vscode": "code",
-    "chrome": "chrome",
-    "wechat": "wechat"
+  "cores3_wifi": {
+    "port": 4321
   }
 }

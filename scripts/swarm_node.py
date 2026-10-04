@@ -4,6 +4,7 @@ import time
 import json
 import socket
 import threading
+import subprocess
 from pathlib import Path
 
 # 编码保护
@@ -22,25 +23,21 @@ IS_WINDOWS = sys.platform == "win32"
 IS_MAC = sys.platform == "darwin"
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT_DIR))
 CONFIG_FILE = ROOT_DIR / "swarm_config.json"
-EXAMPLE_CONFIG = ROOT_DIR / "swarm_config.example.json"
 
 def load_config():
     if not CONFIG_FILE.exists():
-        if EXAMPLE_CONFIG.exists():
-            import shutil
-            shutil.copy2(EXAMPLE_CONFIG, CONFIG_FILE)
-            print(f"[Init] 已根据模板生成配置文件: {CONFIG_FILE}")
-        else:
-            return {
-                "broker": "broker.emqx.io",
-                "port": 1883,
-                "cluster_id": "ghostdesk_marshall_swarm",
-                "cluster_token": "secret123",
-                "node_id": socket.gethostname().lower(),
-                "node_alias": f"{socket.gethostname()} ({'Windows' if IS_WINDOWS else 'macOS'})"
-            }
+        default_cfg = {
+            "broker": "broker.emqx.io",
+            "port": 1883,
+            "cluster_id": "ghostdesk_marshall_swarm",
+            "cluster_token": "ghostdesk_marshall_2026",
+            "node_id": socket.gethostname().lower(),
+            "node_alias": f"{socket.gethostname()} ({'Windows' if IS_WINDOWS else 'macOS'})"
+        }
+        with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+            json.dump(default_cfg, f, indent=2, ensure_ascii=False)
+        return default_cfg
     with open(CONFIG_FILE, "r", encoding="utf-8") as f:
         return json.load(f)
 
@@ -48,7 +45,7 @@ CONFIG = load_config()
 BROKER = CONFIG.get("broker", "broker.emqx.io")
 PORT = CONFIG.get("port", 1883)
 CLUSTER_ID = CONFIG.get("cluster_id", "ghostdesk_marshall_swarm")
-CLUSTER_TOKEN = CONFIG.get("cluster_token", "secret123")
+CLUSTER_TOKEN = CONFIG.get("cluster_token", "ghostdesk_marshall_2026")
 NODE_ID = CONFIG.get("node_id", socket.gethostname().lower())
 NODE_ALIAS = CONFIG.get("node_alias", socket.gethostname())
 
@@ -58,95 +55,146 @@ TOPIC_REGISTRY = f"ghostdesk/{CLUSTER_ID}/registry"
 TOPIC_RESULT = f"ghostdesk/{CLUSTER_ID}/results"
 
 def execute_action(action_type, payload):
-    print(f"\n⚡ [Swarm Worker] 收到执行指令: [{action_type}]", flush=True)
+    print(f"\n⚡ [{time.strftime('%H:%M:%S')}] 收到执行指令: [{action_type}]", flush=True)
     
-    if action_type == "type_text":
+    if action_type == "ping":
+        return {
+            "status": "ok",
+            "message": f"节点 {NODE_ALIAS} 在线正常",
+            "node_id": NODE_ID,
+            "platform": sys.platform,
+            "time": time.time()
+        }
+
+    elif action_type == "type_text":
         text = payload.get("text", "")
         press_enter = payload.get("enter", False)
-        print(f"👉 正在输入文字: {text[:40]}... (回车={press_enter})", flush=True)
+        print(f"👉 正在敲入文字: {text[:60]}... (回车={press_enter})", flush=True)
         try:
             import pyperclip
-            import pyautogui
-            old_clip = pyperclip.paste()
+            old_clip = ""
+            try:
+                old_clip = pyperclip.paste()
+            except Exception:
+                pass
             pyperclip.copy(text)
             if IS_MAC:
-                import subprocess
                 subprocess.run(["osascript", "-e", 'tell application "System Events" to keystroke "v" using command down'])
                 if press_enter:
                     time.sleep(0.05)
                     subprocess.run(["osascript", "-e", 'tell application "System Events" to key code 36'])
             else:
+                import pyautogui
                 pyautogui.hotkey("ctrl", "v")
                 if press_enter:
                     time.sleep(0.05)
                     pyautogui.press("enter")
             time.sleep(0.05)
-            pyperclip.copy(old_clip)
-            return {"status": "ok", "message": f"成功敲入文字并执行"}
+            if old_clip:
+                try:
+                    pyperclip.copy(old_clip)
+                except Exception:
+                    pass
+            return {"status": "ok", "message": f"成功注入文字 (长度: {len(text)})"}
         except Exception as e:
-            return {"status": "error", "message": str(e)}
+            return {"status": "error", "message": f"打字失败: {e}"}
 
-    elif action_type == "video_factory":
-        topic = payload.get("topic", "")
-        print(f"🎬 [Swarm Worker] 启动短视频内容工厂任务: {topic}", flush=True)
+    elif action_type == "screenshot":
+        print(f"📸 正在截取屏幕画面...", flush=True)
         try:
-            from skills.video_factory.engine import VideoFactoryEngine
-            return VideoFactoryEngine.process_task(topic)
+            from PIL import ImageGrab
+            import base64
+            import io
+            img = ImageGrab.grab()
+            # 缩放到合适宽度，保证传输极速
+            if img.width > 1280:
+                scale = 1280 / img.width
+                img = img.resize((1280, int(img.height * scale)))
+            buf = io.BytesIO()
+            img.save(buf, format="JPEG", quality=75)
+            b64_str = base64.b64encode(buf.getvalue()).decode("utf-8")
+            return {
+                "status": "ok",
+                "message": "截图成功",
+                "width": img.width,
+                "height": img.height,
+                "image_base64": b64_str
+            }
         except Exception as e:
-            return {"status": "error", "message": f"短视频工厂执行失败: {e}"}
-
-    elif action_type == "browser_agent":
-        prompt = payload.get("prompt", "")
-        print(f"🌐 [Swarm Worker] 启动浏览器自动化特工任务: {prompt}", flush=True)
-        try:
-            from skills.browser_agent.engine import BrowserAgentEngine
-            return BrowserAgentEngine.process_task(prompt)
-        except Exception as e:
-            return {"status": "error", "message": f"浏览器特工执行失败: {e}"}
+            return {"status": "error", "message": f"截图失败: {e}"}
 
     elif action_type == "launch_app":
         app_name = payload.get("app", "")
-        print(f"👉 正在唤醒/启动应用: {app_name}", flush=True)
-        import subprocess
+        print(f"👉 正在启动/唤醒应用: {app_name}", flush=True)
         try:
             if IS_MAC:
                 subprocess.run(["open", "-a", app_name])
             else:
                 subprocess.run(f"start {app_name}", shell=True)
-            return {"status": "ok", "message": f"应用 {app_name} 已启动/聚焦"}
+            return {"status": "ok", "message": f"应用 [{app_name}] 已成功唤醒"}
         except Exception as e:
-            return {"status": "error", "message": str(e)}
+            return {"status": "error", "message": f"唤醒应用失败: {e}"}
 
     elif action_type == "run_command":
         cmd = payload.get("cmd", "")
-        print(f"👉 正在后台执行命令: {cmd}", flush=True)
-        import subprocess
+        print(f"👉 正在执行系统命令: {cmd}", flush=True)
         try:
-            res = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=60)
-            return {"status": "ok", "stdout": res.stdout, "stderr": res.stderr}
+            res = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=120)
+            stdout = res.stdout.strip()
+            stderr = res.stderr.strip()
+            output = stdout if stdout else stderr
+            return {
+                "status": "ok" if res.returncode == 0 else "nonzero_exit",
+                "exit_code": res.returncode,
+                "output": output[:2000],
+                "message": f"命令执行完成 (退出码: {res.returncode})"
+            }
+        except subprocess.TimeoutExpired:
+            return {"status": "error", "message": "命令执行超时 (超限 120 秒)"}
         except Exception as e:
-            return {"status": "error", "message": str(e)}
+            return {"status": "error", "message": f"命令执行异常: {e}"}
+
+    elif action_type == "run_python":
+        code = payload.get("code", "")
+        print(f"👉 正在执行 Python 代码块...", flush=True)
+        try:
+            res = subprocess.run(
+                [sys.executable, "-c", code],
+                capture_output=True,
+                text=True,
+                timeout=60
+            )
+            return {
+                "status": "ok" if res.returncode == 0 else "error",
+                "output": (res.stdout + res.stderr)[:2000],
+                "message": "Python 代码块执行完成"
+            }
+        except Exception as e:
+            return {"status": "error", "message": f"Python 执行失败: {e}"}
 
     elif action_type == "lock_screen":
-        import subprocess
-        if IS_MAC:
-            subprocess.run(["pmset", "displaysleepnow"])
-        else:
-            subprocess.run(["rundll32.exe", "user32.dll,LockWorkStation"])
-        return {"status": "ok", "message": "已锁定屏幕"}
+        print("🔒 正在执行屏幕锁定...", flush=True)
+        try:
+            if IS_MAC:
+                subprocess.run(["pmset", "displaysleepnow"])
+            else:
+                subprocess.run(["rundll32.exe", "user32.dll,LockWorkStation"])
+            return {"status": "ok", "message": "已成功锁定电脑屏幕"}
+        except Exception as e:
+            return {"status": "error", "message": f"锁屏失败: {e}"}
 
-    return {"status": "unknown_action", "message": f"未支持的指令: {action_type}"}
+    return {"status": "unknown_action", "message": f"未支持的指令动作: {action_type}"}
 
 def on_connect(client, userdata, flags, rc, properties=None):
     if rc == 0:
-        print(f"✅ [Swarm Cloud] 成功连接至云端中继总线 [{BROKER}:{PORT}]", flush=True)
+        print(f"✅ [Swarm Node] 成功连接至云端总线 [{BROKER}:{PORT}]", flush=True)
         print(f"📡 监听私有任务通道: {TOPIC_TASK}", flush=True)
-        print(f"📡 监听广播任务通道: {TOPIC_BROADCAST}", flush=True)
+        print(f"📡 监听全网广播通道: {TOPIC_BROADCAST}", flush=True)
         client.subscribe(TOPIC_TASK)
         client.subscribe(TOPIC_BROADCAST)
         send_heartbeat(client)
     else:
-        print(f"❌ [Swarm Cloud] 连接失败，错误代码: {rc}", flush=True)
+        print(f"❌ [Swarm Node] 连接云端失败，错误代码: {rc}", flush=True)
 
 def on_message(client, userdata, msg):
     try:
@@ -156,10 +204,10 @@ def on_message(client, userdata, msg):
         # 安全 Token 校验
         token = data.get("token", "")
         if token != CLUSTER_TOKEN:
-            print(f"⚠️ [Swarm Worker] 拒绝未经授权的任务请求 (Token 不匹配)")
+            print(f"⚠️ [Swarm Node] 拒绝未经授权的任务请求 (Token 不匹配: {token[:4]}***)", flush=True)
             return
 
-        task_id = data.get("task_id", f"task_{int(time.time())}")
+        task_id = data.get("task_id", f"task_{int(time.time()*1000)}")
         action = data.get("action", "")
         payload = data.get("payload", {})
 
@@ -170,13 +218,14 @@ def on_message(client, userdata, msg):
             "task_id": task_id,
             "node_id": NODE_ID,
             "node_alias": NODE_ALIAS,
+            "action": action,
             "result": result,
             "timestamp": time.time()
         }
         client.publish(TOPIC_RESULT, json.dumps(resp, ensure_ascii=False))
-        print(f"📤 [Swarm Worker] 任务结果已回传云端中继", flush=True)
+        print(f"📤 [Swarm Node] 任务 [{task_id}] 结果已回传至云端中继", flush=True)
     except Exception as e:
-        print(f"❌ [Swarm Worker] 解析任务失败: {e}", flush=True)
+        print(f"❌ [Swarm Node] 处理任务异常: {e}", flush=True)
 
 def send_heartbeat(client):
     info = {
@@ -186,7 +235,10 @@ def send_heartbeat(client):
         "status": "online",
         "timestamp": time.time()
     }
-    client.publish(TOPIC_REGISTRY, json.dumps(info, ensure_ascii=False))
+    try:
+        client.publish(TOPIC_REGISTRY, json.dumps(info, ensure_ascii=False))
+    except Exception:
+        pass
 
 def heartbeat_loop(client):
     while True:
@@ -198,7 +250,7 @@ def heartbeat_loop(client):
 
 def main():
     print("========================================================", flush=True)
-    print(f"🌐 GhostDesk 分布式云端节点启动中...", flush=True)
+    print(f"🌐 GhostDesk 分布式云端智能节点 (Swarm Worker)", flush=True)
     print(f"🏷️  节点标识: [{NODE_ID}] - {NODE_ALIAS}", flush=True)
     print(f"🔐 集群频道: [{CLUSTER_ID}]", flush=True)
     print(f"☁️  云端中继: [{BROKER}:{PORT}]", flush=True)
@@ -211,11 +263,16 @@ def main():
     t = threading.Thread(target=heartbeat_loop, args=(client,), daemon=True)
     t.start()
 
-    try:
-        client.connect(BROKER, PORT, 60)
-        client.loop_forever()
-    except KeyboardInterrupt:
-        print("\n节点已主动退出。")
+    while True:
+        try:
+            client.connect(BROKER, PORT, 60)
+            client.loop_forever()
+        except KeyboardInterrupt:
+            print("\n节点已主动退出。")
+            break
+        except Exception as e:
+            print(f"⚠️ 网络闪断: {e}，5秒后自动重连...", flush=True)
+            time.sleep(5)
 
 if __name__ == "__main__":
     main()

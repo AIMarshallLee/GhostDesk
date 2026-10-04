@@ -3,3 +3,8 @@ numpy>=1.24.0
 bleak>=0.21.0
 winrt-Windows.Devices.Bluetooth>=2.0.0; sys_platform == 'win32'
 winrt-Windows.Devices.Enumeration>=2.0.0; sys_platform == 'win32'
+paho-mqtt>=2.0.0
+pillow>=10.0.0
+requests>=2.28.0
+pyautogui>=0.9.54
+pyperclip>=1.8.2

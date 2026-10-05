@@ -283,7 +283,48 @@ def parse_and_route_command(raw_text: str, source: str = "console"):
     action = "type_text"
     payload = {}
 
-    # 1. 结构化前缀解析
+    # 0. 技能与能力介绍问答（大白话直接回复技能清单卡片）
+    if any(k in text for k in ["你能做什么", "你能干什么", "你会做什么", "你能干啥", "你会干啥", "都有什么功能", "功能列表", "技能", "帮助", "help", "做什么"]):
+        chat_id = FEISHU_CFG.get("default_chat_id", "")
+        if chat_id:
+            feishu_engine.send_interactive_card(
+                receive_id=chat_id,
+                title="⚡ GhostDesk AI 员工蜂群核心能力清单",
+                content_lines=[
+                    "老板好！我是您的**跨电脑物理级 AI 员工总控中枢**。我能帮您实现 **「人只负责决策，多台电脑并发干活」**：",
+                    "🖥️ **1. 异地电脑集中调度与状态监控**\n• 对我说：*“谁在线”* / *“汇报电脑状态”* -> 查看办公室 Win、Mac、家里电脑的在线心跳\n• 对我说：*“看看办公室电脑在干嘛”* / *“发张截图”* -> 电脑静默截图并在飞书把屏幕画面回传给您",
+                    "⚡ **2. 物理与软件级无感代打/操作**\n• 对我说：*“帮我把微信/网盘/浏览器打开”* -> 远程唤醒并聚焦任意本地软件\n• 对我说：*“把办公室电脑锁了”* -> 离开工位时一键远程锁屏保障安全",
+                    "🛠️ **3. 自动化研发与工程协同**\n• 对我说：*“拉一下最新代码”* -> 自动在目标电脑执行 `git pull` 并把日志发回手机\n• 对我说：*“在办公室电脑上运行编译/测试”* -> 静默跑命令并回传执行结果",
+                    "🎙️ **4. CoreS3 随身对讲机联动**\n• 手里拿 M5Stack CoreS3 按住说话，语音直接通过 WiFi 直达我这里，屏幕实时同步各电脑干活状态！",
+                    "💡 **您不需要任何格式要求，像对真人交代任务一样用大白话对我说即可！**"
+                ]
+            )
+        return
+
+    # 1. 状态问询与日常问候（大白话直接回复卡片）
+    if any(k in text for k in ["在吗", "你在吗", "你好", "谁在线", "在线电脑", "汇报状态", "状态", "谁在干活", "有哪些电脑", "电脑都在吗", "status"]):
+        now = time.time()
+        active_list = []
+        for nid, info in online_nodes.items():
+            if now - info.get("last_seen", 0) < 30:
+                active_list.append(f"🟢 **{info.get('alias', nid)}** (`{info.get('platform', 'pc')}`)")
+            else:
+                active_list.append(f"⚪ **{info.get('alias', nid)}** (已离线)")
+        status_msg = "\n".join(active_list) if active_list else "当前暂无电脑上线"
+        chat_id = FEISHU_CFG.get("default_chat_id", "")
+        if chat_id:
+            feishu_engine.send_interactive_card(
+                receive_id=chat_id,
+                title="🤖 AI 员工中枢 · 实时电脑状态盘",
+                content_lines=[
+                    "老板，我一直在线！当前蜂群电脑状态如下：",
+                    status_msg,
+                    "💡 **您可以直接大白话跟我说话**，例如：\n• “看看办公室电脑在干嘛”\n• “把电脑锁了”\n• “把微信打开”\n• “拉一下最新代码”"
+                ]
+            )
+        return
+
+    # 2. 结构化前缀解析 (保留以防有人喜欢前缀)
     if ":" in text or "：" in text:
         delimiter = ":" if ":" in text else "："
         prefix, content = text.split(delimiter, 1)
@@ -300,9 +341,9 @@ def parse_and_route_command(raw_text: str, source: str = "console"):
         if content.startswith("打开 ") or content.startswith("open "):
             action = "launch_app"
             payload = {"app": content.replace("打开 ", "").replace("open ", "").strip()}
-        elif "截图" in content or "screenshot" in content:
+        elif any(k in content for k in ["截图", "看", "画面", "screenshot"]):
             action = "screenshot"
-        elif "锁屏" in content or "休眠" in content:
+        elif any(k in content for k in ["锁屏", "锁", "休眠"]):
             action = "lock_screen"
         elif content.startswith("执行 ") or content.startswith("run "):
             action = "run_command"
@@ -311,20 +352,23 @@ def parse_and_route_command(raw_text: str, source: str = "console"):
             action = "type_text"
             payload = {"text": content, "enter": True}
 
-    # 2. 自然口语意图提取
-    elif "截图" in text:
+    # 3. 彻底大白话自然语言理解
+    elif any(k in text for k in ["截图", "看看在干嘛", "看下电脑", "看下屏幕", "发张图", "截个图", "看看电脑"]):
         action = "screenshot"
         target = resolve_target_from_text(text)
-    elif "锁屏" in text or "休眠" in text:
+    elif any(k in text for k in ["锁屏", "把电脑锁了", "锁一下", "锁电脑", "休眠"]):
         action = "lock_screen"
         target = resolve_target_from_text(text)
-    elif "拉取代码" in text or "更新代码" in text or "git pull" in text:
+    elif any(k in text for k in ["拉取代码", "更新代码", "拉一下代码", "git pull", "同步代码"]):
         action = "run_command"
         payload = {"cmd": "git pull"}
         target = resolve_target_from_text(text)
-    elif "打开" in text:
+    elif any(k in text for k in ["打开", "启动", "唤醒"]):
         action = "launch_app"
-        app = text.split("打开", 1)[1].strip()
+        for kw in ["打开", "启动", "唤醒"]:
+            if kw in text:
+                app = text.split(kw, 1)[1].strip()
+                break
         payload = {"app": app}
         target = resolve_target_from_text(text)
     else:

@@ -85,6 +85,7 @@ def execute_action(action_type, payload):
                     subprocess.run(["osascript", "-e", 'tell application "System Events" to key code 36'])
             else:
                 import pyautogui
+                pyautogui.FAILSAFE = False
                 pyautogui.hotkey("ctrl", "v")
                 if press_enter:
                     time.sleep(0.05)

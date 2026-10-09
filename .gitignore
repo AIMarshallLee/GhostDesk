@@ -1,5 +1,10 @@
 # Dependencies
 node_modules/
+.next/
+.venv/
+dist/
+build/
+*.tar.gz
 
 # Build artifacts
 dist/

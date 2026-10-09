@@ -1,9 +1,11 @@
 """
-FlowDesk 独立无线话筒网桥 (Wireless Mic Bridge)
+FlowDesk 独立无线话筒网桥 (Wireless Mic Bridge) - 全平台强化版
 原理：
 1. 监听 CoreS3 机身双麦克风通过 BLE 发送的实时压缩语音流 (16kHz IMA-ADPCM)
-2. 实时解码并推流至 Windows 虚拟声卡 "CABLE Input"
-3. 微信输入法 (WeType) 从 "CABLE Output" 接收无线音频，实现免配置、高精度语音转写输入！
+2. 针对 macOS：优先采用原生 CoreBluetooth 引擎，秒级直连已连接系统蓝牙的 CoreS3，绕过 BLE 广播屏蔽限制
+3. 针对 Windows：采用 Bleak + MTA COM 套间架构
+4. 实时 2.5x 拾音动态增益 + CoreAudio 48kHz 双声道适配 + 实时终端电平跳动显示
+5. 推流至虚拟声卡 (VB-Cable / BlackHole)，微信输入法秒级实时转写上屏！
 """
 
 import sys
@@ -26,12 +28,6 @@ try:
     import sounddevice as sd
 except ImportError:
     print("[Error] 请先运行: pip install sounddevice", file=sys.stderr)
-    sys.exit(1)
-
-try:
-    from bleak import BleakScanner, BleakClient
-except ImportError:
-    print("[Error] 请先运行: pip install bleak", file=sys.stderr)
     sys.exit(1)
 
 # IMA-ADPCM 解码表
@@ -93,66 +89,54 @@ def find_cable_input_device():
             return idx, dev['name'], dev['max_output_channels']
     return None, None, 1
 
-VOICE_CHAR_UUID = "12345678-1234-5678-1234-56789abcdef1"
+VOICE_SERVICE_UUID = "12345678-1234-5678-1234-56789abcdef0"
+VOICE_CHAR_UUID    = "12345678-1234-5678-1234-56789abcdef1"
 
-async def main():
-    print("=" * 60)
-    print(">>> FlowDesk 独立无线话筒 音频网桥启动")
-    print("=" * 60)
+class AudioPipeline:
+    def __init__(self):
+        cable_id, cable_name, dev_channels = find_cable_input_device()
+        self.target_channels = min(2, max(1, dev_channels))
+        self.target_sr = 16000
+        if cable_id is not None:
+            for candidate_sr in [16000, 48000, 44100]:
+                try:
+                    sd.check_output_settings(device=cable_id, samplerate=candidate_sr, channels=self.target_channels, dtype='int16')
+                    self.target_sr = candidate_sr
+                    break
+                except Exception:
+                    continue
 
-    cable_id, cable_name, dev_channels = find_cable_input_device()
-    target_channels = min(2, max(1, dev_channels))
+        if cable_id is None:
+            print("[提示] 尚未检测到虚拟音频设备 'VB-Cable' 或 'CABLE Input'！", flush=True)
+            print(">>> 正在使用系统默认音频通道做预览监听...\n", flush=True)
+            self.out_stream = sd.OutputStream(samplerate=16000, channels=1, dtype='int16')
+            self.target_channels = 1
+            self.target_sr = 16000
+        else:
+            print(f"[就绪] 成功绑定虚拟音频输入通道: [{cable_id}] {cable_name} ({self.target_channels}声道, {self.target_sr}Hz)", flush=True)
+            self.out_stream = sd.OutputStream(device=cable_id, samplerate=self.target_sr, channels=self.target_channels, dtype='int16')
 
-    # 智能探测声卡支持的采样率 (macOS CoreAudio 原生常锁定 48kHz 或 44.1kHz)
-    target_sr = 16000
-    if cable_id is not None:
-        for candidate_sr in [16000, 48000, 44100]:
-            try:
-                sd.check_output_settings(device=cable_id, samplerate=candidate_sr, channels=target_channels, dtype='int16')
-                target_sr = candidate_sr
-                break
-            except Exception:
-                continue
+        self.out_stream.start()
+        self.decoder = AdpcmDecoder()
+        self.packet_count = 0
+        self.last_ui_time = 0
 
-    if cable_id is None:
-        print("[提示] 尚未检测到虚拟音频设备 'VB-Cable' 或 'CABLE Input'！")
-        print(">>> 正在使用系统默认音频通道做预览监听...\n")
-        out_stream = sd.OutputStream(samplerate=16000, channels=1, dtype='int16')
-        target_channels = 1
-        target_sr = 16000
-    else:
-        print(f"[就绪] 成功绑定虚拟音频输入通道: [{cable_id}] {cable_name} ({target_channels}声道, {target_sr}Hz)")
-        out_stream = sd.OutputStream(device=cable_id, samplerate=target_sr, channels=target_channels, dtype='int16')
+    def reset_decoder(self):
+        self.decoder.reset()
 
-    out_stream.start()
-    decoder = AdpcmDecoder()
-
-    packet_count = 0
-    last_ui_time = 0
-    last_packet_time = 0
-
-    def on_voice_data(sender, data: bytearray):
-        nonlocal packet_count, last_ui_time, last_packet_time
-        now = time.time()
-        if last_packet_time > 0 and (now - last_packet_time > 0.4):
-            decoder.reset()
-        last_packet_time = now
-
-        pcm = decoder.decode_chunk(bytes(data))
-        raw_peak = int(np.max(np.abs(pcm)))
-        rms = int(np.sqrt(np.mean(pcm.astype(np.float32)**2)))
-        
-        # 1. 软件适度增益 (1.5x 保持自然人声饱满度，杜绝爆音削波)
-        pcm_boosted = np.clip(pcm.astype(np.float32) * 1.5, -32768, 32767).astype(np.int16)
+    def process_packet(self, raw_bytes: bytes):
+        pcm = self.decoder.decode_chunk(raw_bytes)
+        # 1. 软件数字动态增益 (2.5x 提升远场与微弱语音清晰度，带限幅防爆音)
+        pcm_boosted = np.clip(pcm.astype(np.float32) * 2.5, -32768, 32767).astype(np.int16)
 
         # 2. 采样率平滑适配 (CoreS3 采集为 16kHz，若声卡要求 48kHz/44.1kHz 则智能插值)
-        if target_sr == 48000:
+        if self.target_sr == 48000:
             pcm_resampled = np.repeat(pcm_boosted, 3)
-        elif target_sr == 16000:
+        elif self.target_sr == 16000:
             pcm_resampled = pcm_boosted
         else:
             src_len = len(pcm_boosted)
-            dst_len = int(src_len * target_sr / 16000)
+            dst_len = int(src_len * self.target_sr / 16000)
             pcm_resampled = np.interp(
                 np.linspace(0, src_len, dst_len, endpoint=False),
                 np.arange(src_len),
@@ -160,26 +144,160 @@ async def main():
             ).astype(np.int16)
 
         # 3. 适配 macOS CoreAudio 严格要求的双声道 (Stereo 2-channel)
-        if target_channels == 2:
+        if self.target_channels == 2:
             pcm_out = np.column_stack((pcm_resampled, pcm_resampled))
         else:
             pcm_out = pcm_resampled
 
-        out_stream.write(pcm_out)
-        packet_count += 1
+        self.out_stream.write(pcm_out)
+        self.packet_count += 1
 
-        # 实时声波跳动电平打印 (终端可视化律动表)
-        if now - last_ui_time >= 0.12:
-            last_ui_time = now
-            try:
-                bar_len = min(18, rms // 220)
-                bars = "=" * bar_len + "-" * (18 - bar_len)
-                sys.stdout.write(f"\r[VOICE PUSH] Level: [{bars}] RMS: {rms:4d} | Peak: {raw_peak:5d} | Pkts: {packet_count}   ")
-                sys.stdout.flush()
-            except Exception:
-                pass
+        now = time.time()
+        if now - self.last_ui_time >= 0.12:
+            self.last_ui_time = now
+            peak = int(np.max(np.abs(pcm_boosted)))
+            bar_len = min(18, peak // 1200)
+            bars = "█" * bar_len + "░" * (18 - bar_len)
+            sys.stdout.write(f"\r[🎤 实时推流] 电平: [{bars}] 峰值: {peak:5d} | 已送达帧数: {self.packet_count}   ")
+            sys.stdout.flush()
 
-    print(">>> 正在搜索 FlowDesk 蓝牙无线话筒设备...")
+# ==========================================
+# macOS 原生 CoreBluetooth 高性能引擎
+# ==========================================
+def run_darwin_engine(pipeline: AudioPipeline):
+    import objc
+    from CoreBluetooth import CBCentralManager, CBUUID
+    from Foundation import NSRunLoop, NSDate, NSDefaultRunLoopMode
+
+    print(">>> 启动 macOS 原生 CoreBluetooth 极速引擎...", flush=True)
+
+    state = {
+        "manager_ready": False,
+        "peripheral": None,
+        "connected": False,
+        "subscribed": False,
+        "voice_char": None
+    }
+
+    class PDelegate(objc.lookUpClass('NSObject')):
+        def peripheral_didDiscoverServices_(self, p, err):
+            if err:
+                print(f"[Error] 发现服务异常: {err}", flush=True)
+                return
+            for s in p.services():
+                if "12345678" in str(s.UUID()).lower():
+                    char_uuid = CBUUID.UUIDWithString_(VOICE_CHAR_UUID)
+                    p.discoverCharacteristics_forService_([char_uuid], s)
+
+        def peripheral_didDiscoverCharacteristicsForService_error_(self, p, s, err):
+            if err:
+                print(f"[Error] 发现特征异常: {err}", flush=True)
+                return
+            for c in s.characteristics():
+                if "abcdef1" in str(c.UUID()).lower():
+                    state["voice_char"] = c
+                    state["subscribed"] = True
+                    p.setNotifyValue_forCharacteristic_(True, c)
+                    print(f"\n[成功连接] 已接入 {p.name() or 'FlowDesk Mac'} 无线双麦通道！", flush=True)
+                    print(">>> 请轻触 CoreS3 机身屏幕（显示“正在倾听”）或对着话筒说话，微信输入法将秒级实时上屏！\n", flush=True)
+                    pipeline.reset_decoder()
+
+        def peripheral_didUpdateValueForCharacteristic_error_(self, p, c, err):
+            if err or not c.value():
+                return
+            data_bytes = bytes(c.value())
+            pipeline.process_packet(data_bytes)
+
+        def peripheral_didUpdateNotificationStateForCharacteristic_error_(self, p, c, err):
+            if err:
+                print(f"[Notice] 订阅状态更新: {err}", flush=True)
+
+    p_delegate = PDelegate.new()
+
+    class CMDelegate(objc.lookUpClass('NSObject')):
+        def centralManagerDidUpdateState_(self, central):
+            if central.state() == 5:
+                state["manager_ready"] = True
+            else:
+                state["manager_ready"] = False
+
+        def centralManager_didConnectPeripheral_(self, central, p):
+            state["connected"] = True
+            p.setDelegate_(p_delegate)
+            service_uuid = CBUUID.UUIDWithString_(VOICE_SERVICE_UUID)
+            p.discoverServices_([service_uuid])
+
+        def centralManager_didDisconnectPeripheral_error_(self, central, p, err):
+            state["connected"] = False
+            state["subscribed"] = False
+            state["peripheral"] = None
+            print(f"\n[提示] 蓝牙设备已断开 ({err})，正在等待重新握手...", flush=True)
+
+        def centralManager_didFailToConnectPeripheral_error_(self, central, p, err):
+            state["connected"] = False
+            state["peripheral"] = None
+            print(f"\n[重试] 连接失败 ({err})，稍后自动重试...", flush=True)
+
+    cm_delegate = CMDelegate.new()
+    central = CBCentralManager.alloc().initWithDelegate_queue_(cm_delegate, None)
+
+    # 等待蓝牙管理器初始化就绪
+    while not state["manager_ready"]:
+        NSRunLoop.currentRunLoop().runUntilDate_(NSDate.dateWithTimeIntervalSinceNow_(0.1))
+
+    print(">>> 正在搜索 FlowDesk 蓝牙无线话筒设备...", flush=True)
+    voice_cbuuid = CBUUID.UUIDWithString_(VOICE_SERVICE_UUID)
+    info_cbuuid = CBUUID.UUIDWithString_("180A")
+
+    last_waiting_print = 0
+
+    while True:
+        try:
+            NSRunLoop.currentRunLoop().runUntilDate_(NSDate.dateWithTimeIntervalSinceNow_(0.02))
+
+            if not state["connected"]:
+                periphs = central.retrieveConnectedPeripheralsWithServices_([voice_cbuuid, info_cbuuid])
+                target_p = None
+                if periphs:
+                    for p in periphs:
+                        name = (p.name() or "").lower()
+                        if "flowdesk" in name or "cores3" in name:
+                            target_p = p
+                            break
+                    if not target_p and len(periphs) > 0:
+                        target_p = periphs[0]
+
+                if target_p:
+                    state["peripheral"] = target_p
+                    print(f"\n>>> 找到设备: {target_p.name()}，正在建立无线音频流通道...", flush=True)
+                    central.connectPeripheral_options_(target_p, None)
+                    # 等待连接确认
+                    wait_connect_start = time.time()
+                    while not state["connected"] and (time.time() - wait_connect_start < 4.0):
+                        NSRunLoop.currentRunLoop().runUntilDate_(NSDate.dateWithTimeIntervalSinceNow_(0.05))
+                else:
+                    now = time.time()
+                    if now - last_waiting_print >= 3.0:
+                        last_waiting_print = now
+                        print("...等待 FlowDesk 蓝牙握手 (请确认 CoreS3 在 Mac 蓝牙中已配对连接)...", flush=True)
+                    time.sleep(0.5)
+
+        except KeyboardInterrupt:
+            break
+        except Exception as e:
+            print(f"[Exception] {e}", flush=True)
+            time.sleep(1.0)
+
+# ==========================================
+# 跨平台 (Windows / Linux) Bleak 引擎
+# ==========================================
+async def run_bleak_engine(pipeline: AudioPipeline):
+    from bleak import BleakScanner, BleakClient
+    print(">>> 启动 Bleak 跨平台音频网桥...", flush=True)
+
+    def on_voice_data(sender, data: bytearray):
+        pipeline.process_packet(bytes(data))
+
     while True:
         try:
             device = None
@@ -206,6 +324,8 @@ async def main():
             if not device:
                 def is_flowdesk(d, ad):
                     name = (d.name or (ad.local_name if ad else "") or "").lower()
+                    if d.address and d.address.upper().startswith("30:ED:A0:D4:B3"):
+                        return True
                     if sys.platform == "darwin":
                         if "marshall" in name or "pc" in name or "win" in name:
                             return False
@@ -230,28 +350,33 @@ async def main():
                 await asyncio.sleep(1.5)
                 continue
 
-            dev_label = device.name or "FlowDesk Mac"
-            print(f"\n>>> 找到设备: {dev_label} ({device.address})，正在建立无线音频流通道...")
+            dev_label = device.name or "FlowDesk"
+            print(f"\n>>> 找到设备: {dev_label} ({device.address})，正在建立无线音频通道...", flush=True)
             async with BleakClient(device) as client:
-                print(f"[成功连接] 已接入 {dev_label} 无线双麦通道！")
-                print(">>> 现在可以对着 CoreS3 机身说话，微信输入法/听写将实时捕获并出字！")
-                decoder.reset()
-
-                # 订阅语音特征通知
-                try:
-                    await client.start_notify(VOICE_CHAR_UUID, on_voice_data)
-                except Exception as e:
-                    print(f"[Info] 音频特征订阅状态: {e}，正在保持待命...")
-
+                print(f"[成功连接] 已接入 {dev_label} 无线双麦通道！", flush=True)
+                pipeline.reset_decoder()
+                await client.start_notify(VOICE_CHAR_UUID, on_voice_data)
                 while client.is_connected:
                     await asyncio.sleep(1)
 
         except Exception as e:
-            print(f"\n[重连中] 蓝牙连接波动 ({e})，2 秒后自动重试...")
+            print(f"\n[重连中] 蓝牙连接波动 ({e})，2 秒后自动重试...", flush=True)
             await asyncio.sleep(2)
+
+def main():
+    print("=" * 60, flush=True)
+    print(">>> FlowDesk 独立无线话筒 音频网桥启动", flush=True)
+    print("=" * 60, flush=True)
+
+    pipeline = AudioPipeline()
+
+    if sys.platform == "darwin":
+        run_darwin_engine(pipeline)
+    else:
+        asyncio.run(run_bleak_engine(pipeline))
 
 if __name__ == "__main__":
     try:
-        asyncio.run(main())
+        main()
     except KeyboardInterrupt:
-        print("\n网桥已退出")
+        print("\n网桥已退出", flush=True)

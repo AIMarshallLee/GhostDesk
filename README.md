@@ -278,7 +278,7 @@ GhostDesk 由 **昆仑增长** 团队自主研发并开源维护。欢迎加入�
     <tr>
       <td align="center">
         <img src="docs/assets/feishu-group.jpg" width="220" alt="飞书技术交流群" /><br />
-        <b>飞书：AI 工具交流群 (永久有效)</b>
+        <b>飞书：昆仑增长 AI 交流群 (永久有效)</b>
       </td>
       <td align="center">
         <img src="docs/assets/wechat-group.png" width="220" alt="微信技术交流群" /><br />

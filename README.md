@@ -269,6 +269,26 @@ GhostDesk 现已支持覆盖全梯度的 4 种物理在环硬件形态：
 - [ ] **v1.1.0 (多机硬件集群调度)**:
   - 多口 USB Hub 阵列支持，单宿主机多 Dongle 并行多任务派发
 
+## 💬 开发者社群与商业合作 (Community & Commercial Support)
+
+GhostDesk 由 **昆仑增长** 团队自主研发并开源维护。欢迎加入桌面 AI 数字员工技术社群，共同探讨物理在环硬件控制、抗封号审计与多模态 VLM 落地应用！
+
+<div align="center">
+  <table>
+    <tr>
+      <td align="center">
+        <img src="docs/assets/feishu-group.jpg" width="220" alt="飞书技术交流群" /><br />
+        <b>飞书：AI 工具交流群 (永久有效)</b>
+      </td>
+      <td align="center">
+        <img src="docs/assets/wechat-group.png" width="220" alt="微信技术交流群" /><br />
+        <b>微信技术交流群</b>
+      </td>
+    </tr>
+  </table>
+  <p><i>扫码即可加入技术交流群。如需 <b>企业级私有化部署、高并发硬件集群调度、定制化技能开发</b>，欢迎在群内对接商务顾问。</i></p>
+</div>
+
 ---
 
 ## 🤝 贡献与开源协议
@@ -277,3 +297,4 @@ GhostDesk 现已支持覆盖全梯度的 4 种物理在环硬件形态：
 
 本项目采用 **Apache License 2.0** 开源协议 - 详见 [LICENSE](LICENSE) 文件。  
 固件部分基于 TinyUSB 实现，遵循 MIT/BSD 协议（详见 `firmware/licenses`）。
+
